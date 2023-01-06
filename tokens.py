@@ -30,7 +30,7 @@ class Token:
 	def operate(self, tokens: list, pos: int) -> list:
 		return tokens
 
-	def output(self):
+	def output(self, field: str = 'tags'):
 		raise NotImplementedError(f'output() method is not implemented for {self.type()}.')
 
 	def type(self):
@@ -48,7 +48,7 @@ class Token:
 		self.children = kids
 
 class NoneToken(Token):
-	def output(self) -> dict:
+	def output(self, field: str = 'tags') -> dict:
 		return {}
 
 #Glob tokens are guaranteed to either reduce or raise an exception.
@@ -125,7 +125,7 @@ class Operator(Token):
 
 		return tokens[0:pos-1] + [self] + tokens[pos+2::]
 
-	def output(self) -> dict:
+	def output(self, field: str = 'tags') -> dict:
 		neg = {
 			'or': 'and',
 			'and': 'or',
@@ -136,11 +136,11 @@ class Operator(Token):
 				child.negate = not child.negate
 
 		return {
-			f'${text}': [ i.output() for i in self.children ]
+			f'${text}': [ i.output(field) for i in self.children ]
 		}
 
 class String(Token):
-	def output(self) -> str:
+	def output(self, field: str = 'tags') -> str:
 		text = self.text
 		if self.glob['left'] and self.glob['right']:
 			text = re.compile(text)
@@ -149,7 +149,7 @@ class String(Token):
 		elif self.glob['right']:
 			text = re.compile('^' + text)
 
-		return {'tags': {'$ne': text }} if self.negate else { 'tags': text }
+		return {field: {'$ne': text }} if self.negate else { field: text }
 
 class LParen(Token):
 	def operate(self, tokens: list, pos: int) -> list:
@@ -200,7 +200,7 @@ class Function(Token):
 
 		return tokens[0:pos] + [self] + tokens[pos+2::]
 
-	def output(self) -> dict:
+	def output(self, field: str = 'tags') -> dict:
 		if len(self.children) == 0:
 			raise exceptions.MissingParam(self.text)
 
@@ -210,25 +210,25 @@ class Function(Token):
 		if self.text == 'eq':
 			if self.negate:
 				return {'$or': [
-					{ f'tags.{count-1}': { '$exists': False } },
-					{ f'tags.{count}': { '$exists': True } },
+					{ f'{field}.{count-1}': { '$exists': False } },
+					{ f'{field}.{count}': { '$exists': True } },
 				]}
 			else:
-				return { 'tags': { '$size': count } }
+				return { field: { '$size': count } }
 
 		elif self.text == 'lt':
 			#don't allow filtering for blobs with fewer than 0 tags, that doesn't make sense.
 			if count < 1:
 				raise exceptions.BadFuncParam(f'Parameter for "{self.text}" must be a positive integer.')
-			return { f'tags.{count-1}': { '$exists': self.negate } }
+			return { f'{field}.{count-1}': { '$exists': self.negate } }
 		elif self.text == 'le':
-			return { f'tags.{count}': { '$exists': self.negate } }
+			return { f'{field}.{count}': { '$exists': self.negate } }
 		elif self.text == 'gt':
-			return { f'tags.{count}': { '$exists': not self.negate } }
+			return { f'{field}.{count}': { '$exists': not self.negate } }
 		elif self.text == 'ge':
 			#don't allow filtering for blobs with at least 0 tags, that's always true.
 			if count < 1:
 				raise exceptions.BadFuncParam(f'Parameter for "{self.text}" must be a positive integer.')
-			return { f'tags.{count-1}': { '$exists': not self.negate } }
+			return { f'{field}.{count-1}': { '$exists': not self.negate } }
 
 		raise NotImplementedError(f'Output for function of type "{self.text}" is not implemented.')
