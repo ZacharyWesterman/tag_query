@@ -3,6 +3,17 @@ import re
 
 INT = re.compile(r'^[0-9]+$')
 
+def debug_print(tok, indent: int = 0) -> str:
+	output = ''
+	if type(tok) is list:
+		for i in tok:
+			output += '\n' + debug_print(i, indent)
+	else:
+		output = '  '*indent + f'{tok.__class__.__name__} ({tok.text})'
+		output += debug_print(tok.children, indent + 1)
+
+	return output
+
 class Token:
 	def __init__(self, text: str):
 		self.text = text
@@ -12,6 +23,9 @@ class Token:
 			'left': False,
 			'right': False,
 		}
+
+	def __str__(self) -> str:
+		return debug_print(self)
 
 	def operate(self, tokens: list, pos: int) -> list:
 		return tokens

@@ -2,14 +2,6 @@ from . import lexer
 from . import exceptions
 from . import tokens
 
-def debug_print(tok, indent = 0):
-	if type(tok) is list:
-		for i in tok:
-			debug_print(i, indent)
-	else:
-		print('  '*indent, tok.__class__.__name__, tok.text)
-		debug_print(tok.children, indent + 1)
-
 def parse(expression: str) -> tokens.Token:
 	prev_len = -1
 	tok = lexer.parse(expression.lower())
