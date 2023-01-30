@@ -29,7 +29,7 @@ def parse(expr: str) -> list:
 		token, expr = consume(SPAC, expr)
 
 		#glob operator
-		if expr[0] == '*':
+		if len(expr) and expr[0] == '*':
 			expr = expr[1::]
 			tok += [ tokens.Glob('*') ]
 			continue
