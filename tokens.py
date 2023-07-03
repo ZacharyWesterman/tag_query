@@ -126,6 +126,9 @@ class Operator(Token):
 		return tokens[0:pos-1] + [self] + tokens[pos+2::]
 
 	def output(self, field: str = 'tags') -> dict:
+		if len(self.children) == 0:
+			raise exceptions.MissingOperand(self.text)
+
 		neg = {
 			'or': 'and',
 			'and': 'or',
