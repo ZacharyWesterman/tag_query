@@ -6,14 +6,16 @@ def parse(expression: str) -> tokens.Token:
 	prev_len = -1
 	tok = lexer.parse(expression.lower())
 
-	#first pass to condense any globs
+	#first pass to condense any globs and strings
 	pos = 0
 	while pos < len(tok):
-		if tok[pos].type() != 'Glob':
-			pos += 1
-			continue
+		prev_len = len(tok)
 
-		tok = tok[pos].operate(tok, pos)
+		if tok[pos].type() in ['Glob', 'String']:
+			tok = tok[pos].operate(tok, pos)
+		
+		if len(tok) == prev_len:
+			pos += 1
 
 	#then operate on all other tokens
 	while len(tok) > 1:

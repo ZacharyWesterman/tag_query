@@ -143,6 +143,14 @@ class Operator(Token):
 		}
 
 class String(Token):
+	def operate(self, tokens: list, pos: int) -> list:
+		#Concatenate adjacent strings into a single string separated by spaces
+		if pos + 1 < len(tokens) and tokens[pos+1].type() == 'String':
+			self.text += f' {tokens[pos+1].text}'
+			return tokens[0:pos+1] + tokens[pos+2::]
+
+		return tokens
+
 	def output(self, field: str = 'tags') -> str:
 		text = self.text
 		if self.glob['left'] and self.glob['right']:
