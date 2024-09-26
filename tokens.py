@@ -155,13 +155,13 @@ class String(Token):
 		return tokens
 
 	def output(self, field: str = 'tags') -> str:
-		text = re.escape(self.text)
+		text = self.text
 		if self.glob['left'] and self.glob['right']:
-			text = re.compile(text)
+			text = re.compile(re.escape(text))
 		elif self.glob['left']:
-			text = re.compile(text + '$')
+			text = re.compile(re.escape(text) + '$')
 		elif self.glob['right']:
-			text = re.compile('^' + text)
+			text = re.compile('^' + re.escape(text))
 
 		return {field: {'$ne': text }} if self.negate else { field: text }
 
