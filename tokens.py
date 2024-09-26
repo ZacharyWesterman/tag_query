@@ -155,15 +155,19 @@ class String(Token):
 		return tokens
 
 	def output(self, field: str = 'tags') -> str:
-		text = self.text
-		if self.glob['left'] and self.glob['right']:
-			text = re.compile(re.escape(text))
-		elif self.glob['left']:
-			text = re.compile(re.escape(text) + '$')
-		elif self.glob['right']:
-			text = re.compile('^' + re.escape(text))
+		globbing = self.glob['left'] or self.glob['right']
 
-		return {field: {'$ne': text }} if self.negate else { field: text }
+		text = re.escape(self.text) if globbing else self.text
+		oper = '$not' if globbing else '$ne'
+
+		if globbing:
+			if not self.glob['left']:
+				text = '^' + text
+			elif not self.glob['right']:
+				text = text + '$'
+			text = re.compile(text)
+
+		return {field: {oper: text}} if self.negate else {field: text}
 
 class LParen(Token):
 	def operate(self, tokens: list, pos: int) -> list:
