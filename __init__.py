@@ -35,4 +35,4 @@ def parse(expression: str) -> tokens.Token:
 
 		prev_len = len(tok)
 
-	return tok[0] if len(tok) else tokens.NoneToken('')
+	return tok[0] if len(tok) else tokens.NoneToken()

@@ -48,6 +48,9 @@ class Token:
 		self.children = kids
 
 class NoneToken(Token):
+	def __init__(self):
+		pass
+
 	def output(self, field: str = 'tags') -> dict:
 		return {}
 
