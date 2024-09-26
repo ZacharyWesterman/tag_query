@@ -155,7 +155,7 @@ class String(Token):
 		return tokens
 
 	def output(self, field: str = 'tags') -> str:
-		text = self.text
+		text = re.escape(self.text)
 		if self.glob['left'] and self.glob['right']:
 			text = re.compile(text)
 		elif self.glob['left']:
