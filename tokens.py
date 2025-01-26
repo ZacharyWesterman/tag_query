@@ -88,7 +88,7 @@ class Operator(Token):
 			if ((rtype == 'Function' or rtype == 'Operator') and rkids == 0) or rtype == 'LParen':
 				return tokens
 
-			if rtype != 'String' and rkids == 0:
+			if rtype not in ['String', 'Regex'] and rkids == 0:
 				raise exceptions.MissingOperand(self.text)
 
 			tokens[pos+1].negate = not tokens[pos+1].negate
@@ -113,7 +113,7 @@ class Operator(Token):
 		if rtype == 'Operator' and tokens[pos+1].text == 'not' and rkids == 0:
 			return tokens
 
-		if (ltype != 'String' and lkids == 0) or (rtype != 'String' and rkids == 0):
+		if (ltype not in ['String', 'Regex'] and lkids == 0) or (rtype not in ['String', 'Regex'] and rkids == 0):
 			raise exceptions.MissingOperand(self.text)
 
 		self.children = [ tokens[pos-1], tokens[pos+1] ]
@@ -168,6 +168,13 @@ class String(Token):
 			text = re.compile(text)
 
 		return {field: {oper: text}} if self.negate else {field: text}
+
+class Regex(Token):
+	def output(self, field: str = 'tags') -> dict:
+		try:
+			return {field: re.compile(self.text)}
+		except re.error as e:
+			raise exceptions.BadRegex(self.text, str(e))
 
 class LParen(Token):
 	def operate(self, tokens: list, pos: int) -> list:

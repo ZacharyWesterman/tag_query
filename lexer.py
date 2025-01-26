@@ -13,6 +13,8 @@ STR1 = re.compile(r'[a-zA-Z0-9_\.]+')
 STR2 = re.compile(r'"(\\"|[^"])*"')
 ANY  = re.compile(r'[^\&\|\(\)\"a-zA-Z0-9_\-\.]+')
 UNTR = re.compile(r'"[^"]*$')
+REGX = re.compile(r'\{[^\}]*\}')
+UNRG = re.compile(r'\{[^\}]*$')
 
 def consume(pattern: re.Pattern, expr: str, group: int = 0) -> str:
 	match = pattern.match(expr)
@@ -88,10 +90,21 @@ def parse(expr: str) -> list:
 			tok += [ tokens.String(token[1:-1]) ]
 			continue
 
+		#regex
+		token, expr = consume(REGX, expr)
+		if token is not None:
+			tok += [ tokens.Regex(token[1:-1]) ]
+			continue
+
 		#if there's an unterminated string, that's an error
 		token, expr = consume(UNTR, expr)
 		if token is not None:
 			raise exceptions.UnterminatedString
+
+		#if there's an unterminated regex, that's an error
+		token, expr = consume(UNRG, expr)
+		if token is not None:
+			raise exceptions.BadRegex(token, 'unterminated regex')
 
 		#if anything else, there's an error in the pattern
 		token, expr = consume(ANY, expr)

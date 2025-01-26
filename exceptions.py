@@ -39,3 +39,7 @@ class BadFuncParam(ParseError):
 class BadGlob(ParseError):
 	def __init__(self):
 		super().__init__('Glob "*" must be immediately adjacent to a tag.')
+
+class BadRegex(ParseError):
+	def __init__(self, text: str, message: str):
+		super().__init__(f'Invalid regex "{text}": {message}.')
