@@ -18,7 +18,7 @@ print(mongo_query) #will output -> {'$and': [{'field_name': 'value1'}, {'field_n
 # Syntax
 
 OPERATOR: any of (`and`,`+`), (`or`,`/`), (`not`,`-`)
-FUNCTION: any of (`eq`,`equals`,`exact`,`exactly`), (`lt`,`fewer`,`below`), (`gt`,`greater`,`above`), (`le`,`max`,`maximum`), (`ge`,`min`,`minimum`)
+FUNCTION: any of (`eq`,`equals`,`exact`,`exactly`, `=`), (`lt`,`fewer`,`below`, `<`), (`gt`,`greater`,`above`, `>`), (`le`,`max`,`maximum`, `<=`), (`ge`,`min`,`minimum`, `>=`)
 LPAREN: `(`
 RPAREN: `)`
 STRING: without quotes is `[a-zA-Z0-9_\.]+` (letter, number, underscore, period), inside quotes is `"(\\"|[^"])*"` (anything other that quotes)
