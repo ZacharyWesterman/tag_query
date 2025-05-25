@@ -36,7 +36,7 @@ class Token:
 	def type(self):
 		return self.__class__.__name__
 
-	def coalesce(self) -> list:
+	def coalesce(self) -> None:
 		#fold together children for operators of the same type.
 		kids = []
 		for child in self.children:
@@ -154,7 +154,7 @@ class String(Token):
 
 		return tokens
 
-	def output(self, field: str = 'tags') -> str:
+	def output(self, field: str = 'tags') -> dict:
 		globbing = self.glob['left'] or self.glob['right']
 
 		text = re.escape(self.text) if globbing else self.text

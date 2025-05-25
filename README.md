@@ -4,10 +4,14 @@ This module converts a text query into a dict that can be directly used in a Mon
 
 To get started, include this repo as a submodule in your project. Then you can use it directly:
 ```py
-from tag_query import parse, exceptions
+from tag_query import compile_query, exceptions
 
 try:
-  mongo_query = parse('value1 and value2').output('field_name')
+  mongo_query = compile_query(
+    expression = 'value1 and value2',
+    field = 'field_name'
+  )
+  # Or just `compile_query('value1 and value2', 'field_name')`
 except exceptions.ParseError as e:
   print(e)
   exit(1)

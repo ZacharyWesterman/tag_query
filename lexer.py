@@ -16,7 +16,7 @@ UNTR = re.compile(r'"[^"]*$')
 REGX = re.compile(r'\{[^\}]*\}')
 UNRG = re.compile(r'\{[^\}]*$')
 
-def consume(pattern: re.Pattern, expr: str, group: int = 0) -> str:
+def consume(pattern: re.Pattern, expr: str, group: int = 0) -> tuple[str|None, str]:
 	match = pattern.match(expr)
 	if match:
 		grp = match.group(group)

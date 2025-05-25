@@ -1,3 +1,5 @@
+__all__ = ['compile_query', 'exceptions']
+
 from . import lexer
 from . import exceptions
 from . import tokens
@@ -36,3 +38,20 @@ def parse(expression: str) -> tokens.Token:
 		prev_len = len(tok)
 
 	return tok[0] if len(tok) else tokens.NoneToken()
+
+def compile_query(expression: str, field: str) -> dict:
+	"""
+	Compile a string expression into a MongoDB query dictionary.
+	
+	Args:
+		expression (str): The expression to compile.
+		field (str): The field to apply the expression to.
+		
+	Returns:
+		dict: A dictionary representing the MongoDB query.
+
+	Raises:
+		exceptions.ParseError: If the expression cannot be compiled.
+			See exceptions.py for specific error types.
+	"""
+	return parse(expression).output(field)
