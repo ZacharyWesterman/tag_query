@@ -18,4 +18,4 @@ def invalid_syntax():
 		compile_query('a and b or c and d or', 'tags')
 
 	with raises(exceptions.ParseError):
-		compile_query('a and b or c and d or e', 'tags')
+		compile_query('and and and', 'tags')

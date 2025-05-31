@@ -2,9 +2,11 @@
 This module provides a testing framework for the project.
 """
 
+import inspect
 from pathlib import Path
 from sys import exc_info
-from traceback import format_exception
+from traceback import extract_stack, format_exception
+from types import FrameType, TracebackType
 from typing import Callable
 
 from compiler import compile_query, exceptions
@@ -26,6 +28,12 @@ def test(func: Callable[[], None]) -> Callable:
 	return func
 
 
+class NoRaisesError(Exception):
+	"""
+	Custom exception raised when a test expects an exception but receives none.
+	"""
+
+
 class RaisesError(Exception):
 	"""
 	Custom exception raised when a test expects an exception but receives a different one.
@@ -43,25 +51,41 @@ class RaisesContext:
 
 	def __init__(self, exception: type[BaseException], *other_exceptions: type[BaseException]) -> None:
 		self.exceptions = (exception, *other_exceptions)
-		self.excinfo = None
 
 	def __enter__(self) -> None:
-		self.excinfo = exc_info()
+		pass
 
 	def __exit__(self, exc_type, exc_value, tb) -> bool:
-		if exc_type not in self.exceptions:
-			valid_types = ', '.join(
-				exc.__name__ for exc in self.exceptions[:-1]
+		valid_types = ', '.join(
+			exc.__name__ for exc in self.exceptions[:-1]
+		)
+		valid_types += ' or ' if len(self.exceptions) > 1 else ''
+		valid_types += self.exceptions[-1].__name__
+
+		# If no exception was raised, that's an error because we expected one.
+		if exc_type is None:
+			stack = inspect.stack()
+			frame = stack[-1].frame
+
+			tbdata = TracebackType(None, frame, frame.f_lasti, frame.f_lineno)
+
+			# Set that as the exception frame
+			exc_value = NoRaisesError(
+				f'Expected an exception of type {valid_types}, but no exception was raised.',
 			)
-			valid_types += ' or ' if len(self.exceptions) > 1 else ''
-			valid_types += self.exceptions[-1].__name__
 
-			# Alter the exception to be an AssertionError.
-			raise RaisesError(
-				f'  Expected {valid_types}, but got `{exc_type.__name__}: {exc_value}`'
-			) from exc_value
+			raise exc_value.with_traceback(tbdata)
 
-		return True  # Suppress the exception if it matches
+		# If the exception matches one of the expected exceptions,
+		# or if it is a subclass of one of the expected exceptions,
+		# we suppress it.
+		if exc_type is not None and any(isinstance(exc_value, exc) for exc in self.exceptions):
+			return True
+
+		# Alter the exception to be an AssertionError.
+		raise RaisesError(
+			f'Expected {valid_types}, but got `{exc_type.__name__}: {exc_value}`'
+		) from exc_value
 
 
 def raises(exception: type[BaseException], *other_exceptions: type[BaseException]) -> RaisesContext:
@@ -106,7 +130,13 @@ def run_tests() -> None:
 		except RaisesError as e:
 			etype, value, tb = exc_info()
 			info = format_exception(etype, value, tb)
-			failed_tests.append(f'{info[1]}{e}\n')
+			failed_tests.append(f'{info[1]}  {e}\n')
+			# Print red cross for failure
+			print('\033[91m✗\033[0m')
+		except NoRaisesError as e:
+			etype, value, tb = exc_info()
+			info = format_exception(etype, value, tb)
+			failed_tests.append(f'{info[2]}  {e}\n')
 			# Print red cross for failure
 			print('\033[91m✗\033[0m')
 		except AssertionError:
