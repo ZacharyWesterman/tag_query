@@ -1,3 +1,7 @@
+"""
+This module parses a string expression into a list of tokens.
+"""
+
 __all__ = ['parse']
 
 import re
@@ -6,7 +10,9 @@ from . import exceptions, tokens
 
 SPAC = re.compile(r'[ \t\n\r]*')
 OPER = re.compile(r'\band\b|\bor\b|\bnot\b|\+|/|\-')
-FUNC = re.compile(r'\b(eq|lt|gt|le|ge|equals?|exact(ly)?|min(imum)?|max(imum)?|fewer|greater|below|above)\b')
+FUNC = re.compile(
+	r'\b(eq|lt|gt|le|ge|equals?|exact(ly)?|min(imum)?|max(imum)?|fewer|greater|below|above)\b'
+)
 LPAR = re.compile(r'\(')
 RPAR = re.compile(r'\)')
 STR1 = re.compile(r'[a-zA-Z0-9_\.]+')

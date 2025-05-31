@@ -5,8 +5,8 @@ This module provides a testing framework for the project.
 import inspect
 from pathlib import Path
 from sys import exc_info
-from traceback import extract_stack, format_exception
-from types import FrameType, TracebackType
+from traceback import format_exception
+from types import TracebackType
 from typing import Callable
 
 from compiler import compile_query, exceptions

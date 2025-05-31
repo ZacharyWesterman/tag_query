@@ -1,9 +1,27 @@
+"""
+This module compiles a string expression into a MongoDB query dictionary.
+"""
+
 __all__ = ['compile_query', 'exceptions']
 
 from . import exceptions, lexer, tokens
 
 
 def parse(expression: str) -> tokens.Token:
+	"""
+	Parse a string expression into a token tree.
+
+	Args:
+		expression (str): The expression to parse.
+
+	Returns:
+		tokens.Token: The root token of the parsed expression.
+
+	Raises:
+		exceptions.SyntaxError: If the expression cannot be parsed.
+			See exceptions.py for specific error types.
+	"""
+
 	prev_len = -1
 	tok = lexer.parse(expression.lower())
 
@@ -12,7 +30,7 @@ def parse(expression: str) -> tokens.Token:
 	while pos < len(tok):
 		prev_len = len(tok)
 
-		if tok[pos].type() in ['Glob', 'String']:
+		if tok[pos].type in ['Glob', 'String']:
 			tok = tok[pos].operate(tok, pos)
 
 		if len(tok) == prev_len:
@@ -36,7 +54,7 @@ def parse(expression: str) -> tokens.Token:
 
 		prev_len = len(tok)
 
-	return tok[0] if len(tok) else tokens.NoneToken()
+	return tok[0] if len(tok) > 0 else tokens.NoneToken()
 
 
 def compile_query(expression: str, field: str) -> dict:

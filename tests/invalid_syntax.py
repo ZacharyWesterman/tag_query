@@ -5,9 +5,7 @@ from . import compile_query, exceptions, raises, test
 
 @test
 def invalid_syntax():
-	"""
-	Check for invalid syntax in query compilation.
-	"""
+	"""Confirm invalid syntax."""
 	with raises(exceptions.ParseError):
 		compile_query('a and b or', 'tags')
 

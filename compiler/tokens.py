@@ -1,3 +1,7 @@
+"""
+This module defines the token classes used in the query compiler.
+"""
+
 import re
 
 from . import exceptions
@@ -5,19 +9,12 @@ from . import exceptions
 INT = re.compile(r'^[0-9]+$')
 
 
-def debug_print(tok, indent: int = 0) -> str:
-	output = ''
-	if type(tok) is list:
-		for i in tok:
-			output += '\n' + debug_print(i, indent)
-	else:
-		output = '  ' * indent + f'{tok.__class__.__name__} ({tok.text})'
-		output += debug_print(tok.children, indent + 1)
-
-	return output
-
-
 class Token:
+	"""
+	Base class for all tokens in the query compiler.
+	Each token represents a part of the query expression and can have children tokens.
+	"""
+
 	def __init__(self, text: str):
 		self.text = text
 		self.children = []
@@ -30,51 +27,112 @@ class Token:
 	def __str__(self) -> str:
 		return debug_print(self)
 
+	# pylint: disable=unused-argument
 	def operate(self, tokens: list, pos: int) -> list:
+		"""
+		Operate on the token and return the modified list of tokens.
+
+		Args:
+			tokens (list): The list of tokens to operate on.
+			pos (int): The position of this token in the list.
+
+		Returns:
+			list: The modified list of tokens.
+		"""
 		return tokens
+	# pylint: enable=unused-argument
 
-	def output(self, field: str = 'tags'):
-		raise NotImplementedError(f'output() method is not implemented for {self.type()}.')
+	def output(self, field: str = 'tags') -> dict:
+		"""
+		Output the token as a dictionary representation for MongoDB queries.
 
-	def type(self):
+		Args:
+			field (str): The field to output the token for, default is 'tags'.
+
+		Returns:
+			dict: The dictionary representation of the token.
+
+		Raises:
+			exceptions.InternalError: If the output method is not implemented for this token type.
+		"""
+		raise exceptions.InternalError(f'output() method is not implemented for {self.type}.')
+
+	@property
+	def type(self) -> str:
+		"""
+		Get the type of the token.
+
+		Returns:
+			str: The type of the token.
+		"""
 		return self.__class__.__name__
 
 	def coalesce(self) -> None:
-		# fold together children for operators of the same type.
+		"""
+		Coalesce the children of this token.
+		This method is used to combine adjacent operator tokens of the same type
+		into a single token with multiple children.
+		"""
+
 		kids = []
 		for child in self.children:
 			child.coalesce()
-			if child.type() == 'Operator' and self.text == child.text and not child.negate:
+			if child.type == 'Operator' and self.text == child.text and not child.negate:
 				kids += child.children
 			else:
 				kids += [child]
 		self.children = kids
 
 
+def debug_print(tok: Token | list[Token], indent: int = 0) -> str:
+	"""
+	Recursively prints the token tree for debugging purposes.
+	Args:
+		tok (Token or list): The token or list of tokens to print.
+	"""
+
+	output = ''
+	if isinstance(tok, list):
+		for i in tok:
+			output += '\n' + debug_print(i, indent)
+	else:
+		output = '  ' * indent + f'{tok.__class__.__name__} ({tok.text})'
+		output += debug_print(tok.children, indent + 1)
+
+	return output
+
+
 class NoneToken(Token):
+	"""A placeholder token used when no expression is found."""
+
 	def __init__(self):
-		pass
+		super().__init__('')
 
 	def output(self, field: str = 'tags') -> dict:
 		return {}
 
-# Glob tokens are guaranteed to either reduce or raise an exception.
-# They don't have to wait for other exprs to reduce since globs must be adjacent to strings.
-
 
 class Glob(Token):
+	"""
+	Glob tokens are used for simple pattern matching in the query.
+	They are used to match tags that start or end with a certain string.
+
+	Glob tokens are guaranteed to either reduce or raise an exception.
+	They don't have to wait for other exprs to reduce since globs must be adjacent to strings.
+	"""
+
 	def operate(self, tokens: list, pos: int) -> list:
 		# remove redundant globs
-		if pos < (len(tokens) - 1) and tokens[pos + 1].type() == 'Glob':
+		if pos < (len(tokens) - 1) and tokens[pos + 1].type == 'Glob':
 			return tokens[0:pos - 1] + tokens[pos + 1::]
 
 		# if next token is a string, glob on the left (*X)
-		if pos < (len(tokens) - 1) and tokens[pos + 1].type() == 'String':
+		if pos < (len(tokens) - 1) and tokens[pos + 1].type == 'String':
 			tokens[pos + 1].glob['left'] = True
 			return tokens[0:pos] + tokens[pos + 1::]
 
 		# if prev token is a string, glob on the right (X*)
-		elif pos > 0 and tokens[pos - 1].type() == 'String':
+		elif pos > 0 and tokens[pos - 1].type == 'String':
 			tokens[pos - 1].glob['right'] = True
 			return tokens[0:pos] + tokens[pos + 1::]
 
@@ -82,17 +140,25 @@ class Glob(Token):
 
 
 class Operator(Token):
+	"""
+	Operators are used to combine expressions in the query.
+	They can be binary (AND/OR) or unary (NOT).
+	"""
+
 	def operate(self, tokens: list, pos: int) -> list:
 		# NOT operator is unary, unless by itself, then it's actually "and not".
-		if self.text == 'not' and (pos <= 0 or (tokens[pos - 1].type() == 'Operator' and len(tokens[pos - 1].children) == 0)):
+		if self.text == 'not' and (pos <= 0 or (
+			tokens[pos - 1].type == 'Operator' and
+			len(tokens[pos - 1].children) == 0
+		)):
 			if pos >= (len(tokens) - 1):
 				raise exceptions.MissingOperand(self.text)
 
-			rtype = tokens[pos + 1].type()
+			rtype = tokens[pos + 1].type
 			rkids = len(tokens[pos + 1].children)
 
 			# don't be greedy; let functions or other NOT opers try to get their param if they can.
-			if ((rtype == 'Function' or rtype == 'Operator') and rkids == 0) or rtype == 'LParen':
+			if (rtype in ['Function', 'Operator'] and rkids == 0) or rtype == 'LParen':
 				return tokens
 
 			if rtype not in ['String', 'Regex'] and rkids == 0:
@@ -107,10 +173,10 @@ class Operator(Token):
 		if pos == 0 or pos >= (len(tokens) - 1):
 			raise exceptions.MissingOperand(self.text)
 
-		ltype = tokens[pos - 1].type()
+		ltype = tokens[pos - 1].type
 		lkids = len(tokens[pos - 1].children)
 
-		rtype = tokens[pos + 1].type()
+		rtype = tokens[pos + 1].type
 		rkids = len(tokens[pos + 1].children)
 
 		# don't be greedy; let functions try to get their param if they can.
@@ -120,7 +186,10 @@ class Operator(Token):
 		if rtype == 'Operator' and tokens[pos + 1].text == 'not' and rkids == 0:
 			return tokens
 
-		if (ltype not in ['String', 'Regex'] and lkids == 0) or (rtype not in ['String', 'Regex'] and rkids == 0):
+		if (
+			(ltype not in ['String', 'Regex'] and lkids == 0) or
+			(rtype not in ['String', 'Regex'] and rkids == 0)
+		):
 			raise exceptions.MissingOperand(self.text)
 
 		self.children = [tokens[pos - 1], tokens[pos + 1]]
@@ -154,9 +223,14 @@ class Operator(Token):
 
 
 class String(Token):
+	"""
+	String tokens represent a single tag or a string literal in the query.
+	They can be concatenated with adjacent strings or globs to form a single tag.
+	"""
+
 	def operate(self, tokens: list, pos: int) -> list:
 		# Concatenate adjacent strings into a single string separated by spaces
-		if pos + 1 < len(tokens) and tokens[pos + 1].type() == 'String':
+		if pos + 1 < len(tokens) and tokens[pos + 1].type == 'String':
 			self.text += f' {tokens[pos + 1].text}'
 			return tokens[0:pos + 1] + tokens[pos + 2::]
 
@@ -179,6 +253,11 @@ class String(Token):
 
 
 class Regex(Token):
+	"""
+	Regex tokens represent a regular expression in the query.
+	They are used to match tags that conform to a specific pattern.
+	"""
+
 	def output(self, field: str = 'tags') -> dict:
 		try:
 			return {field: re.compile(self.text)}
@@ -187,14 +266,19 @@ class Regex(Token):
 
 
 class LParen(Token):
+	"""
+	Left parenthesis tokens are used to group expressions in the query.
+	They indicate the start of a sub-expression that should be evaluated together.
+	"""
+
 	def operate(self, tokens: list, pos: int) -> list:
 		if pos >= (len(tokens) - 2):
 			raise exceptions.MissingRightParen
 
-		ptype = tokens[pos + 1].type()
+		ptype = tokens[pos + 1].type
 		pkids = len(tokens[pos + 1].children)
 
-		rtype = tokens[pos + 2].type()
+		rtype = tokens[pos + 2].type
 
 		# inner expression hasn't been parsed yet, so exit early
 		if rtype != 'RParen':
@@ -211,15 +295,23 @@ class LParen(Token):
 
 
 class RParen(Token):
-	pass
+	"""
+	Right parenthesis tokens are used to close a group of expressions in the query.
+	They indicate the end of a sub-expression that should be evaluated together.
+	"""
 
 
 class Function(Token):
+	"""
+	Function tokens represent functions that operate on a single parameter.
+	They are used to filter results based on the number of tags or other criteria.
+	"""
+
 	def operate(self, tokens: list, pos: int) -> list:
 		if pos >= (len(tokens) - 1):
 			raise exceptions.MissingRightParen
 
-		ptype = tokens[pos + 1].type()
+		ptype = tokens[pos + 1].type
 		pkids = len(tokens[pos + 1].children)
 
 		# inner expression hasn't been parsed yet, so exit early
@@ -250,19 +342,17 @@ class Function(Token):
 					{f'{field}.{count - 1}': {'$exists': False}},
 					{f'{field}.{count}': {'$exists': True}},
 				]}
-			else:
-				return {field: {'$size': count}}
-
-		elif self.text == 'lt':
+			return {field: {'$size': count}}
+		if self.text == 'lt':
 			# don't allow filtering for blobs with fewer than 0 tags, that doesn't make sense.
 			if count < 1:
 				raise exceptions.BadFuncParam(f'Parameter for "{self.text}" must be a positive integer.')
 			return {f'{field}.{count - 1}': {'$exists': self.negate}}
-		elif self.text == 'le':
+		if self.text == 'le':
 			return {f'{field}.{count}': {'$exists': self.negate}}
-		elif self.text == 'gt':
+		if self.text == 'gt':
 			return {f'{field}.{count}': {'$exists': not self.negate}}
-		elif self.text == 'ge':
+		if self.text == 'ge':
 			# don't allow filtering for blobs with at least 0 tags, that's always true.
 			if count < 1:
 				raise exceptions.BadFuncParam(f'Parameter for "{self.text}" must be a positive integer.')
