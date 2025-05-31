@@ -1,7 +1,9 @@
-from . import exceptions
 import re
 
+from . import exceptions
+
 INT = re.compile(r'^[0-9]+$')
+
 
 def debug_print(tok, indent: int = 0) -> str:
 	output = ''
@@ -9,10 +11,11 @@ def debug_print(tok, indent: int = 0) -> str:
 		for i in tok:
 			output += '\n' + debug_print(i, indent)
 	else:
-		output = '  '*indent + f'{tok.__class__.__name__} ({tok.text})'
+		output = '  ' * indent + f'{tok.__class__.__name__} ({tok.text})'
 		output += debug_print(tok.children, indent + 1)
 
 	return output
+
 
 class Token:
 	def __init__(self, text: str):
@@ -37,7 +40,7 @@ class Token:
 		return self.__class__.__name__
 
 	def coalesce(self) -> None:
-		#fold together children for operators of the same type.
+		# fold together children for operators of the same type.
 		kids = []
 		for child in self.children:
 			child.coalesce()
@@ -47,6 +50,7 @@ class Token:
 				kids += [child]
 		self.children = kids
 
+
 class NoneToken(Token):
 	def __init__(self):
 		pass
@@ -54,79 +58,82 @@ class NoneToken(Token):
 	def output(self, field: str = 'tags') -> dict:
 		return {}
 
-#Glob tokens are guaranteed to either reduce or raise an exception.
-#They don't have to wait for other exprs to reduce since globs must be adjacent to strings.
+# Glob tokens are guaranteed to either reduce or raise an exception.
+# They don't have to wait for other exprs to reduce since globs must be adjacent to strings.
+
+
 class Glob(Token):
 	def operate(self, tokens: list, pos: int) -> list:
-		#remove redundant globs
-		if pos < (len(tokens) - 1) and tokens[pos+1].type() == 'Glob':
-			return tokens[0:pos-1] + tokens[pos+1::]
+		# remove redundant globs
+		if pos < (len(tokens) - 1) and tokens[pos + 1].type() == 'Glob':
+			return tokens[0:pos - 1] + tokens[pos + 1::]
 
-		#if next token is a string, glob on the left (*X)
-		if pos < (len(tokens) - 1) and tokens[pos+1].type() == 'String':
-			tokens[pos+1].glob['left'] = True
-			return tokens[0:pos] + tokens[pos+1::]
+		# if next token is a string, glob on the left (*X)
+		if pos < (len(tokens) - 1) and tokens[pos + 1].type() == 'String':
+			tokens[pos + 1].glob['left'] = True
+			return tokens[0:pos] + tokens[pos + 1::]
 
-		#if prev token is a string, glob on the right (X*)
-		elif pos > 0 and tokens[pos-1].type() == 'String':
-			tokens[pos-1].glob['right'] = True
-			return tokens[0:pos] + tokens[pos+1::]
+		# if prev token is a string, glob on the right (X*)
+		elif pos > 0 and tokens[pos - 1].type() == 'String':
+			tokens[pos - 1].glob['right'] = True
+			return tokens[0:pos] + tokens[pos + 1::]
 
 		raise exceptions.BadGlob
 
+
 class Operator(Token):
 	def operate(self, tokens: list, pos: int) -> list:
-		#NOT operator is unary, unless by itself, then it's actually "and not".
-		if self.text == 'not' and (pos <= 0 or (tokens[pos-1].type() == 'Operator' and len(tokens[pos-1].children) == 0)):
+		# NOT operator is unary, unless by itself, then it's actually "and not".
+		if self.text == 'not' and (pos <= 0 or (tokens[pos - 1].type() == 'Operator' and len(tokens[pos - 1].children) == 0)):
 			if pos >= (len(tokens) - 1):
 				raise exceptions.MissingOperand(self.text)
 
-			rtype = tokens[pos+1].type()
-			rkids = len(tokens[pos+1].children)
+			rtype = tokens[pos + 1].type()
+			rkids = len(tokens[pos + 1].children)
 
-			#don't be greedy; let functions or other NOT opers try to get their param if they can.
+			# don't be greedy; let functions or other NOT opers try to get their param if they can.
 			if ((rtype == 'Function' or rtype == 'Operator') and rkids == 0) or rtype == 'LParen':
 				return tokens
 
 			if rtype not in ['String', 'Regex'] and rkids == 0:
 				raise exceptions.MissingOperand(self.text)
 
-			tokens[pos+1].negate = not tokens[pos+1].negate
+			tokens[pos + 1].negate = not tokens[pos + 1].negate
 
-			return tokens[0:pos] + tokens[pos+1::]
+			return tokens[0:pos] + tokens[pos + 1::]
 
-		#AND/OR operators start here
+		# AND/OR operators start here
 
 		if pos == 0 or pos >= (len(tokens) - 1):
 			raise exceptions.MissingOperand(self.text)
 
-		ltype = tokens[pos-1].type()
-		lkids = len(tokens[pos-1].children)
+		ltype = tokens[pos - 1].type()
+		lkids = len(tokens[pos - 1].children)
 
-		rtype = tokens[pos+1].type()
-		rkids = len(tokens[pos+1].children)
+		rtype = tokens[pos + 1].type()
+		rkids = len(tokens[pos + 1].children)
 
-		#don't be greedy; let functions try to get their param if they can.
+		# don't be greedy; let functions try to get their param if they can.
 		if (rtype == 'Function' and rkids == 0) or ltype == 'RParen' or rtype == 'LParen':
 			return tokens
 
-		if rtype == 'Operator' and tokens[pos+1].text == 'not' and rkids == 0:
+		if rtype == 'Operator' and tokens[pos + 1].text == 'not' and rkids == 0:
 			return tokens
 
 		if (ltype not in ['String', 'Regex'] and lkids == 0) or (rtype not in ['String', 'Regex'] and rkids == 0):
 			raise exceptions.MissingOperand(self.text)
 
-		self.children = [ tokens[pos-1], tokens[pos+1] ]
+		self.children = [tokens[pos - 1], tokens[pos + 1]]
 
 		# A not B -> A and not B
 		if self.text == 'not':
 			self.text = 'and'
 			self.children[1].negate = not self.children[1].negate
 
-		#fold together children for operators of the same type.
+		# fold together children for operators of the same type.
 		self.coalesce()
 
-		return tokens[0:pos-1] + [self] + tokens[pos+2::]
+		return tokens[0:pos - 1] + [self] + tokens[pos + 2::]
 
 	def output(self, field: str = 'tags') -> dict:
 		if len(self.children) == 0:
@@ -142,15 +149,16 @@ class Operator(Token):
 				child.negate = not child.negate
 
 		return {
-			f'${text}': [ i.output(field) for i in self.children ]
+			f'${text}': [i.output(field) for i in self.children]
 		}
+
 
 class String(Token):
 	def operate(self, tokens: list, pos: int) -> list:
-		#Concatenate adjacent strings into a single string separated by spaces
-		if pos + 1 < len(tokens) and tokens[pos+1].type() == 'String':
-			self.text += f' {tokens[pos+1].text}'
-			return tokens[0:pos+1] + tokens[pos+2::]
+		# Concatenate adjacent strings into a single string separated by spaces
+		if pos + 1 < len(tokens) and tokens[pos + 1].type() == 'String':
+			self.text += f' {tokens[pos + 1].text}'
+			return tokens[0:pos + 1] + tokens[pos + 2::]
 
 		return tokens
 
@@ -169,6 +177,7 @@ class String(Token):
 
 		return {field: {oper: text}} if self.negate else {field: text}
 
+
 class Regex(Token):
 	def output(self, field: str = 'tags') -> dict:
 		try:
@@ -176,15 +185,16 @@ class Regex(Token):
 		except re.error as e:
 			raise exceptions.BadRegex(self.text, str(e))
 
+
 class LParen(Token):
 	def operate(self, tokens: list, pos: int) -> list:
 		if pos >= (len(tokens) - 2):
 			raise exceptions.MissingRightParen
 
-		ptype = tokens[pos+1].type()
-		pkids = len(tokens[pos+1].children)
+		ptype = tokens[pos + 1].type()
+		pkids = len(tokens[pos + 1].children)
 
-		rtype = tokens[pos+2].type()
+		rtype = tokens[pos + 2].type()
 
 		# inner expression hasn't been parsed yet, so exit early
 		if rtype != 'RParen':
@@ -193,22 +203,24 @@ class LParen(Token):
 		if ptype != 'String' and pkids == 0:
 			raise exceptions.EmptyParens
 
-		#fold together children for operators of the same type.
+		# fold together children for operators of the same type.
 		if ptype == 'Operator':
-			tokens[pos+1].coalesce()
+			tokens[pos + 1].coalesce()
 
-		return tokens[0:pos] + [tokens[pos+1]] + tokens[pos+3::]
+		return tokens[0:pos] + [tokens[pos + 1]] + tokens[pos + 3::]
+
 
 class RParen(Token):
 	pass
+
 
 class Function(Token):
 	def operate(self, tokens: list, pos: int) -> list:
 		if pos >= (len(tokens) - 1):
 			raise exceptions.MissingRightParen
 
-		ptype = tokens[pos+1].type()
-		pkids = len(tokens[pos+1].children)
+		ptype = tokens[pos + 1].type()
+		pkids = len(tokens[pos + 1].children)
 
 		# inner expression hasn't been parsed yet, so exit early
 		if ptype == 'LParen':
@@ -217,43 +229,43 @@ class Function(Token):
 		if ptype != 'String' and pkids == 0:
 			raise exceptions.MissingParam(self.text)
 
-		#Currently, all functions require a precisely numeric param.
-		if ptype != 'String' or not INT.match(tokens[pos+1].text):
+		# Currently, all functions require a precisely numeric param.
+		if ptype != 'String' or not INT.match(tokens[pos + 1].text):
 			raise exceptions.BadFuncParam(f'Parameter for "{self.text}" must be an integer.')
 
-		self.children = [ tokens[pos+1] ]
+		self.children = [tokens[pos + 1]]
 
-		return tokens[0:pos] + [self] + tokens[pos+2::]
+		return tokens[0:pos] + [self] + tokens[pos + 2::]
 
 	def output(self, field: str = 'tags') -> dict:
 		if len(self.children) == 0:
 			raise exceptions.MissingParam(self.text)
 
-		#we know that the param will always be numeric, not an expression
+		# we know that the param will always be numeric, not an expression
 		count = int(self.children[0].text)
 
 		if self.text == 'eq':
 			if self.negate:
 				return {'$or': [
-					{ f'{field}.{count-1}': { '$exists': False } },
-					{ f'{field}.{count}': { '$exists': True } },
+					{f'{field}.{count - 1}': {'$exists': False}},
+					{f'{field}.{count}': {'$exists': True}},
 				]}
 			else:
-				return { field: { '$size': count } }
+				return {field: {'$size': count}}
 
 		elif self.text == 'lt':
-			#don't allow filtering for blobs with fewer than 0 tags, that doesn't make sense.
+			# don't allow filtering for blobs with fewer than 0 tags, that doesn't make sense.
 			if count < 1:
 				raise exceptions.BadFuncParam(f'Parameter for "{self.text}" must be a positive integer.')
-			return { f'{field}.{count-1}': { '$exists': self.negate } }
+			return {f'{field}.{count - 1}': {'$exists': self.negate}}
 		elif self.text == 'le':
-			return { f'{field}.{count}': { '$exists': self.negate } }
+			return {f'{field}.{count}': {'$exists': self.negate}}
 		elif self.text == 'gt':
-			return { f'{field}.{count}': { '$exists': not self.negate } }
+			return {f'{field}.{count}': {'$exists': not self.negate}}
 		elif self.text == 'ge':
-			#don't allow filtering for blobs with at least 0 tags, that's always true.
+			# don't allow filtering for blobs with at least 0 tags, that's always true.
 			if count < 1:
 				raise exceptions.BadFuncParam(f'Parameter for "{self.text}" must be a positive integer.')
-			return { f'{field}.{count-1}': { '$exists': not self.negate } }
+			return {f'{field}.{count - 1}': {'$exists': not self.negate}}
 
 		raise NotImplementedError(f'Output for function of type "{self.text}" is not implemented.')
