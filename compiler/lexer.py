@@ -1,22 +1,29 @@
+"""
+This module parses a string expression into a list of tokens.
+"""
+
 __all__ = ['parse']
 
 import re
-from . import exceptions
-from . import tokens
+
+from . import exceptions, tokens
 
 SPAC = re.compile(r'[ \t\n\r]*')
 OPER = re.compile(r'\band\b|\bor\b|\bnot\b|\+|/|\-')
-FUNC = re.compile(r'\b(eq|lt|gt|le|ge|equals?|exact(ly)?|min(imum)?|max(imum)?|fewer|greater|below|above)\b')
+FUNC = re.compile(
+	r'\b(eq|lt|gt|le|ge|equals?|exact(ly)?|min(imum)?|max(imum)?|fewer|greater|below|above)\b'
+)
 LPAR = re.compile(r'\(')
 RPAR = re.compile(r'\)')
 STR1 = re.compile(r'[a-zA-Z0-9_\.]+')
 STR2 = re.compile(r'"(\\"|[^"])*"')
-ANY  = re.compile(r'[^\&\|\(\)\"a-zA-Z0-9_\-\.]+')
+ANY = re.compile(r'[^\&\|\(\)\"a-zA-Z0-9_\-\.]+')
 UNTR = re.compile(r'"[^"]*$')
 REGX = re.compile(r'\{[^\}]*\}')
 UNRG = re.compile(r'\{[^\}]*$')
 
-def consume(pattern: re.Pattern, expr: str, group: int = 0) -> tuple[str|None, str]:
+
+def consume(pattern: re.Pattern, expr: str, group: int = 0) -> tuple[str | None, str]:
 	match = pattern.match(expr)
 	if match:
 		grp = match.group(group)
@@ -24,58 +31,67 @@ def consume(pattern: re.Pattern, expr: str, group: int = 0) -> tuple[str|None, s
 	else:
 		return None, expr
 
+
 def parse(expr: str) -> list:
 	tok = []
 	while len(expr):
-		#ignore whitespace
+		# ignore whitespace
 		token, expr = consume(SPAC, expr)
 
-		#glob operator
+		# glob operator
 		if len(expr) and expr[0] == '*':
 			expr = expr[1::]
-			tok += [ tokens.Glob('*') ]
+			tok += [tokens.Glob('*')]
 			continue
 
-		#operators
+		# operators
 		token, expr = consume(OPER, expr)
 		if token is not None:
-			if token == '/': token = 'or'
-			if token == '+': token = 'and'
-			if token == '-': token = 'not'
-			tok += [ tokens.Operator(token) ]
+			if token == '/':
+				token = 'or'
+			if token == '+':
+				token = 'and'
+			if token == '-':
+				token = 'not'
+			tok += [tokens.Operator(token)]
 			continue
 
-		#functions
+		# functions
 		token, expr = consume(FUNC, expr, group=1)
 		if token is not None:
-			if token[0] == 'e': token = 'eq'
-			elif token[0:3] == 'min': token = 'ge'
-			elif token[0:3] == 'max': token = 'le'
-			elif token in ['fewer', 'below']: token = 'lt'
-			elif token in ['greater', 'above']: token = 'gt'
+			if token[0] == 'e':
+				token = 'eq'
+			elif token[0:3] == 'min':
+				token = 'ge'
+			elif token[0:3] == 'max':
+				token = 'le'
+			elif token in ['fewer', 'below']:
+				token = 'lt'
+			elif token in ['greater', 'above']:
+				token = 'gt'
 
-			tok += [ tokens.Function(token) ]
+			tok += [tokens.Function(token)]
 			continue
 
-		#left paren
+		# left paren
 		token, expr = consume(LPAR, expr)
 		if token is not None:
-			tok += [ tokens.LParen(token) ]
+			tok += [tokens.LParen(token)]
 			continue
 
-		#right paren
+		# right paren
 		token, expr = consume(RPAR, expr)
 		if token is not None:
-			tok += [ tokens.RParen(token) ]
+			tok += [tokens.RParen(token)]
 			continue
 
-		#non-quoted words
+		# non-quoted words
 		token, expr = consume(STR1, expr)
 		if token is not None:
-			tok += [ tokens.String(token) ]
+			tok += [tokens.String(token)]
 			continue
 
-		#quoted words
+		# quoted words
 		token, expr = consume(STR2, expr)
 		if token is not None:
 			escs = [
@@ -87,26 +103,26 @@ def parse(expr: str) -> list:
 			]
 			for esc in escs:
 				token = token.replace(esc[0], esc[1])
-			tok += [ tokens.String(token[1:-1]) ]
+			tok += [tokens.String(token[1:-1])]
 			continue
 
-		#regex
+		# regex
 		token, expr = consume(REGX, expr)
 		if token is not None:
-			tok += [ tokens.Regex(token[1:-1]) ]
+			tok += [tokens.Regex(token[1:-1])]
 			continue
 
-		#if there's an unterminated string, that's an error
+		# if there's an unterminated string, that's an error
 		token, expr = consume(UNTR, expr)
 		if token is not None:
 			raise exceptions.UnterminatedString
 
-		#if there's an unterminated regex, that's an error
+		# if there's an unterminated regex, that's an error
 		token, expr = consume(UNRG, expr)
 		if token is not None:
 			raise exceptions.BadRegex(token, 'unterminated regex')
 
-		#if anything else, there's an error in the pattern
+		# if anything else, there's an error in the pattern
 		token, expr = consume(ANY, expr)
 		if token is not None:
 			raise exceptions.InvalidSymbol(token)
