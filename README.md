@@ -2,7 +2,9 @@
 
 This module converts a text query into a dict that can be directly used in a MongoDB query of a string array field.
 
-To get started, include this repo as a submodule in your project. Then you can use it directly:
+To get started, include this repo as a submodule in your project. Then you can use it directly.
+For example, to query a collection for any documents for which the field `field_name` contains `value1` and `value2`:
+
 ```py
 from tag_query import compile_query, exceptions
 
@@ -21,15 +23,27 @@ print(mongo_query) #will output -> {'$and': [{'field_name': 'value1'}, {'field_n
 ---
 # Syntax
 
-OPERATOR: any of (`and`,`+`), (`or`,`/`), (`not`,`-`)
-FUNCTION: any of (`eq`,`equals`,`exact`,`exactly`, `=`), (`lt`,`fewer`,`below`, `<`), (`gt`,`greater`,`above`, `>`), (`le`,`max`,`maximum`, `<=`), (`ge`,`min`,`minimum`, `>=`)
-LPAREN: `(`
-RPAREN: `)`
-STRING: without quotes is `[a-zA-Z0-9_\.]+` (letter, number, underscore, period), inside quotes is `"(\\"|[^"])*"` (anything other that quotes)
-REGEX: `\{[^\}]*\}` (anything inside curly braces `{}`)
-GLOB: `*`
+First, it's important to note that a tag query expression has no precedence;
+expressions are evaluated from left to right, unless otherwise demarcated by parentheses.
 
-- Multiple strings next to each other will concatenate into a single string, with a space to separate. E.g. `str1 str2 and str3` is the same as `"str1 str2" and "str3"`.
-- The `not` operator between two strings is equivalent to `and not`. E.g. `a not b` = `a and not b`.
-- The GLOB operator allows simple pattern matching, e.g. `tag1*` matches anything that begins with "tag1".
-- Operators and functions don't have any precedence; they are evaluated from left to right. E.g. `a and b or c and d` is the same as `((a and b) or c) and d`.
+- TAG: case-sensitive
+  - simple: Any non-keyword, non-function, alphanumeric text. `some_tag` and `ThisIsATag123` both count.
+  - quoted: Any string of text inside double quotes. `"tag-with-dashes and operator text"` is a *single* tag.
+  - regex: Any string inside curly braces. `{^[A-Za-z0-9]+$}` matches any purely alphanumeric tag.
+  - CAVEATS for simple and quoted tags:
+    - If placed next to each other without an operator between them, the tags will concatenate with a single space as the delimiter. E.g. `tag1 and tag2 tag3` is the same as `"tag1" and "tag2 tag3"`
+    - The Glob operator (`*`) may be used for simple pattern matching. E.g. `*test*` will match any tag that begins or ends with "test", such as "contested". `*test` or `test*` are also valid, and match tags that end and begin with "test", respectively.
+- OPERATOR: case-insensitive
+  - `and`, `+`: Require *both* values to exist. `tag1 and tag2` or `tag1 + tag2`
+  - `or`, `/`: Require *at least 1* value to exist. `tag1 or tag2` or `tag1 / tag2`
+  - `not`, `-`: Invert the selection. `not tag1` or `not (tag1 and tag2)`
+    - In a binary expression, `not` can equal `and not`. For example `tag1 not tag2` or `tag1 - tag2`
+- FUNCTION: case-insensitive
+  - `eq`,`equals`,`exact`,`exactly`, `=`: Require the document to have *exactly* that many tags. `exactly 5`
+  - `lt`,`fewer`,`below`, `<`: Require the document to have *fewer than* that many tags. `fewer 5`
+  - `gt`,`greater`,`above`, `>`: Require the document to have *more than* that many tags. `greater 5`
+  - `le`,`max`,`maximum`, `<=`: Require the document to have *at most* that many tags. `maximum 5`
+  - `ge`,`min`,`minimum`, `>=`: Require the document to have *at least* that many tags. `minimum 5`
+- PARENTHESES:
+  - `(`, `)`: Controls order of operations. `a + (b - c)` is different from `(a + b) - c` (the latter is the same as `a + b - c`. remember: left to right).
+
