@@ -87,3 +87,10 @@ class BadRegex(ParseError):
 
 	def __init__(self, text: str, message: str):
 		super().__init__(f'Invalid regex "{text}": {message}.')
+
+
+class ImpossibleRange(ParseError):
+	"""Raised when a tag count range is logically impossible in the query expression."""
+
+	def __init__(self, min: int, max: int | float):
+		super().__init__(f'Tag count of [min={min} to max={max}] is impossible.')

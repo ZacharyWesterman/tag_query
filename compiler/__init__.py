@@ -54,7 +54,14 @@ def parse(expression: str) -> tokens.Token:
 
 		prev_len = len(tok)
 
-	return tok[0] if len(tok) > 0 else tokens.NoneToken()
+	if len(tok) == 0:
+		return tokens.NoneToken()
+
+	result = tok[0].reduce()
+	if result.delete_me:
+		return tokens.NoneToken()
+
+	return result
 
 
 def compile_query(expression: str, field: str) -> dict:

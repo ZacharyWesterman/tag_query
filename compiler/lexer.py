@@ -11,7 +11,7 @@ from . import exceptions, tokens
 SPAC = re.compile(r'[ \t\n\r]*')
 OPER = re.compile(r'\band\b|\bor\b|\bnot\b|\+|/|\-')
 FUNC = re.compile(
-	r'\b(eq|lt|gt|le|ge|equals?|exact(ly)?|min(imum)?|max(imum)?|fewer|greater|below|above)\b'
+	r'(>=|>|<=|<|=)|\b(eq|lt|gt|le|ge|equals?|exact(ly)?|min(imum)?|max(imum)?|fewer|greater|below|above)\b'
 )
 LPAR = re.compile(r'\(')
 RPAR = re.compile(r'\)')
@@ -59,15 +59,15 @@ def parse(expr: str) -> list:
 		# functions
 		token, expr = consume(FUNC, expr, group=1)
 		if token is not None:
-			if token[0] == 'e':
+			if token in ['equals', 'exactly', 'exact', 'equal', '=']:
 				token = 'eq'
-			elif token[0:3] == 'min':
+			elif token in ['min', 'minimum', '>=']:
 				token = 'ge'
-			elif token[0:3] == 'max':
+			elif token in ['max', 'maximum', '<=']:
 				token = 'le'
-			elif token in ['fewer', 'below']:
+			elif token in ['fewer', 'below', '<']:
 				token = 'lt'
-			elif token in ['greater', 'above']:
+			elif token in ['greater', 'above', '>']:
 				token = 'gt'
 
 			tok += [tokens.Function(token)]

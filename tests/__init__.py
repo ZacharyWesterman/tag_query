@@ -114,7 +114,7 @@ for i in [
 	__import__(f'tests.{i}')
 
 
-def run_tests(test_list: list | None) -> None:
+def run_tests(test_list: list) -> None:
 	"""
 	Run registered tests, optionally filtering by a list of test names.
 	All tests are run if no list is provided.
@@ -126,7 +126,7 @@ def run_tests(test_list: list | None) -> None:
 	failed_tests: list[str] = []
 
 	for description, function in __tests.items():
-		if test_list is not None and function.__name__ not in test_list:
+		if len(test_list) > 0 and function.__name__ not in test_list:
 			continue
 
 		# pylint: disable=broad-exception-caught

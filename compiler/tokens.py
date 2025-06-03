@@ -3,6 +3,7 @@ This module defines the token classes used in the query compiler.
 """
 
 import re
+from typing import Self
 
 from . import exceptions
 
@@ -16,16 +17,38 @@ class Token:
 	"""
 
 	def __init__(self, text: str):
-		self.text = text
-		self.children = []
-		self.negate = False
-		self.glob = {
+		self.text: str = text
+		self.children: list[Token] = []
+		self.negate: bool = False
+		self.glob: dict[str, bool] = {
 			'left': False,
 			'right': False,
 		}
+		self.delete_me: bool = False
+		self.replace_parent: bool = False
 
 	def __str__(self) -> str:
 		return debug_print(self)
+
+	def __eq__(self, other) -> bool:
+		return (
+			isinstance(other, Token) and
+			self.type == other.type and
+			self.text == other.text
+		)
+
+	def __lt__(self, other) -> bool:
+		return self.text < other.text
+
+	def __hash__(self) -> int:
+		return f'{self.type}:{self.text}'.__hash__()
+
+	def __repr__(self) -> str:
+		return (
+			f'{self.__class__.__name__}({self.text}' +
+			(f' <{self.children}>' if len(self.children) > 0 else '') +
+			')'
+		)
 
 	# pylint: disable=unused-argument
 	def operate(self, tokens: list, pos: int) -> list:
@@ -77,11 +100,26 @@ class Token:
 		kids = []
 		for child in self.children:
 			child.coalesce()
+
+			if child.delete_me:
+				continue
+
 			if child.type == 'Operator' and self.text == child.text and not child.negate:
 				kids += child.children
 			else:
 				kids += [child]
 		self.children = kids
+
+	def reduce(self) -> Self:
+		"""
+		Reduce the token and its children to a single token if possible.
+		This method is used to simplify the token tree by removing unnecessary tokens.
+
+		Returns:
+			Token: The reduced token.
+		"""
+
+		return self
 
 
 def debug_print(tok: Token | list[Token], indent: int = 0) -> str:
@@ -221,6 +259,95 @@ class Operator(Token):
 			f'${text}': [i.output(field) for i in self.children]
 		}
 
+	def coalesce(self) -> None:
+		"""
+		If AND or OR operators have redundant children, they are coalesced into a single operator.
+		"""
+
+		super().coalesce()
+
+		if self.text == 'not':
+			return
+
+		# Collect all text operands and remove duplicates, sorting them for consistency.
+		text_tokens = sorted(set(i for i in self.children if i.type in ['String', 'Regex']))
+
+		# Collect all function tokens, remove ones whose ranges overlap.
+		function_tokens: list[Function] = [i for i in self.children if isinstance(i, Function)]
+
+		if len(function_tokens) > 0:
+			func_range = None
+			for i in function_tokens:
+				if func_range is None:
+					func_range = Range.from_text(i.text, i.children[0].text)
+				else:
+					other = Range.from_text(i.text, i.children[0].text)
+					if self.text == 'or' and not func_range.overlaps(other):
+						# If the ranges do not overlap... too complicated!!!
+						func_range = None
+						break
+					func_range = Range.merge(func_range, other, self.text)
+
+			if func_range is not None:
+				if func_range.size() < 0 and self.text == 'or':
+					# If "or" operator and the range is negative, invert the range.
+					func_range = Range(
+						min_tags=0 if func_range.max_tags == float('inf') else int(func_range.max_tags),
+						max_tags=func_range.min_tags
+					)
+
+				if func_range.size() <= 0 and self.text == 'and':
+					# If "and" operator and no valid range, this operator is impossible.
+					raise exceptions.ImpossibleRange(func_range.min_tags, func_range.max_tags)
+
+				if func_range.size() == 0:
+					# If the range is empty, we have a "eq" function.
+					# If start is less than 1, no need to keep the function.
+					if func_range.min_tags >= 0:
+						func = Function('eq')
+						func.children = [Token(str(func_range.min_tags))]
+						function_tokens = [func]
+
+				elif func_range.max_tags == float('inf'):
+					# If the range is infinite, we have a "ge" function.
+					if func_range.min_tags > 0:
+						# If start is greater than 0, we can use "ge" function.
+						func = Function('ge')
+						func.children = [Token(str(func_range.min_tags))]
+						function_tokens = [func]
+					else:
+						print('Range is infinite and starts at 0, deleting operator.')
+						self.delete_me = True
+				else:
+					# If the range is not infinite and not a single value, we have two functions.
+					f1 = Function('ge')
+					f1.children = [Token(str(func_range.min_tags))]
+					f2 = Function('le')
+					f2.children = [Token(str(func_range.max_tags))]
+					function_tokens = [f1, f2]
+
+		self.children = text_tokens + function_tokens
+
+	def reduce(self) -> Token:
+		if self.text == 'not':
+			if self.children[0].text == 'not':
+				# If this operator is "not" and the first child is also "not", remove both operators.
+				return self.children[0].children[0]
+			return self
+
+		if len(self.children) == 1:
+			# If there's only one child, replace this operator with the child.
+			child = self.children[0]
+			child.negate = self.negate
+			child.glob = self.glob
+
+			return child
+
+		if len(self.children) == 0:
+			self.delete_me = True
+
+		return self
+
 
 class String(Token):
 	"""
@@ -299,6 +426,139 @@ class RParen(Token):
 	Right parenthesis tokens are used to close a group of expressions in the query.
 	They indicate the end of a sub-expression that should be evaluated together.
 	"""
+
+
+class Range:
+	"""
+	Represents the range of how many tags a blob can have.
+	"""
+
+	@staticmethod
+	def from_text(operator: str, value: str):
+		"""
+		Initializes a Range object from a text representation.
+
+		Args:
+			operator (str): The operator indicating the type of range (eq, lt, le, gt, ge).
+			value (str): The value associated with the operator, expected to be a numeric string.
+
+		Raises:
+			exceptions.BadFuncParam: If the operator is invalid or the value is not a valid integer.
+		"""
+
+		if operator == 'eq':
+			min_tags = int(value)
+			max_tags = min_tags
+		elif operator == 'lt':
+			min_tags = 0
+			max_tags = int(value) - 1
+		elif operator == 'le':
+			min_tags = 0
+			max_tags = int(value)
+		elif operator == 'gt':
+			min_tags = int(value) + 1
+			max_tags = float('inf')
+		elif operator == 'ge':
+			min_tags = int(value)
+			max_tags = float('inf')
+		else:
+			raise exceptions.BadFuncParam(f'Invalid operator "{operator}" for Range.')
+
+		return Range(min_tags, max_tags)
+
+	def __init__(self, min_tags: int, max_tags: int | float):
+		"""
+		Initializes a Range object from a minimum and maximum tag count.
+
+		Args:
+			min_tags (int): The minimum number of tags.
+			max_tags (int | float): The maximum number of tags, can be infinite (float('inf')).
+		"""
+
+		self.min_tags = min_tags
+		self.max_tags = max_tags
+
+	def __str__(self) -> str:
+		return f'[{self.min_tags}, {self.max_tags}]'
+
+	def __repr__(self) -> str:
+		return f'Range({self.min_tags}, {self.max_tags})'
+
+	def size(self) -> int:
+		"""
+		Returns the size of the range.
+		If the range is infinite, returns a very large number.
+		"""
+
+		if self.max_tags == float('inf'):
+			return 1_000_000
+		return int(self.max_tags) - self.min_tags + 1
+
+	def overlaps(self, other) -> bool:
+		"""
+		Checks if this range overlaps with another range.
+
+		Args:
+			other (Range): The other Range to check for overlap.
+
+		Returns:
+			bool: True if the ranges overlap, False otherwise.
+		"""
+		lhs = Range.norm(self)
+		rhs = Range.norm(other)
+
+		if lhs.min_tags - 1 > rhs.max_tags or rhs.min_tags - 1 > lhs.max_tags:
+			return False
+
+		return True
+
+	@staticmethod
+	def norm(obj):
+		"""
+		Normalizes the range to ensure min_tags is less than or equal to max_tags.
+		If the range is invalid (min_tags > max_tags), it raises an exception.
+
+		Returns:
+			Range: The normalized Range object.
+		"""
+		if obj.min_tags > obj.max_tags:
+			return Range(int(obj.max_tags), obj.min_tags)
+
+		return Range(obj.min_tags, obj.max_tags)
+
+	@staticmethod
+	def merge(this, other, operator: str):
+		"""
+		Merges another Range into this one, expanding the range if necessary.
+
+		Args:
+			other (Range): The other Range to merge into this one.
+			operator (str): The operator that defines how to merge the ranges.
+			Valid operators are 'and' or 'or'.
+
+		Raises:
+			TypeError: If the other object is not a Range.
+			ValueError: If the operator is not 'and' or 'or'.
+		"""
+		if not isinstance(other, Range):
+			raise TypeError(f'Cannot merge {type(other)} into Range.')
+
+		if operator not in ['and', 'or']:
+			raise ValueError(f'Invalid operator "{operator}" for merging ranges.')
+
+		if operator == 'and':
+			return Range(
+				max(this.min_tags, other.min_tags),
+				min(this.max_tags, other.max_tags)
+			)
+
+		return Range(
+			min(this.min_tags, other.min_tags),
+			float('inf') if (
+				this.max_tags == float('inf') or
+				other.max_tags == float('inf')
+			) else max(this.max_tags, other.max_tags)
+		)
 
 
 class Function(Token):
