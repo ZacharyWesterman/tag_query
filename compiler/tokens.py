@@ -316,7 +316,6 @@ class Operator(Token):
 						func.children = [Token(str(func_range.min_tags))]
 						function_tokens = [func]
 					else:
-						print('Range is infinite and starts at 0, deleting operator.')
 						self.delete_me = True
 				else:
 					# If the range is not infinite and not a single value, we have two functions.
@@ -390,6 +389,20 @@ class Regex(Token):
 			return {field: re.compile(self.text)}
 		except re.error as e:
 			raise exceptions.BadRegex(self.text, str(e))
+
+	def reduce(self):
+		"""
+		Reduce the regex token to a string token if it matches a simple pattern.
+		This is useful for optimizing queries by converting regexes to strings when possible.
+		"""
+
+		# If the regex is a simple string, convert it to a String token.
+		if self.text.startswith('^') and self.text.endswith('$'):
+			text = self.text[1:-1]
+			if re.escape(text) == text:
+				return String(text)
+
+		return self
 
 
 class LParen(Token):
