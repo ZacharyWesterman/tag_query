@@ -34,14 +34,15 @@ class Token:
 		return (
 			isinstance(other, Token) and
 			self.type == other.type and
-			self.text == other.text
+			self.text == other.text and
+			self.negate == other.negate
 		)
 
 	def __lt__(self, other) -> bool:
 		return self.text < other.text
 
 	def __hash__(self) -> int:
-		return f'{self.type}:{self.text}'.__hash__()
+		return f'{self.type}:{self.text}:{int(self.negate)}'.__hash__()
 
 	def __repr__(self) -> str:
 		return (
@@ -272,9 +273,20 @@ class Operator(Token):
 		# Collect all text operands and remove duplicates, sorting them for consistency.
 		text_tokens = sorted(set(i for i in self.children if i.type in ['String', 'Regex']))
 
+		# Remove redundant text tokens.
+		for i in range(len(text_tokens) - 1):
+			if text_tokens[i].text == text_tokens[i + 1].text:
+				msg = ('not ' if text_tokens[i].negate else '') + f'"{text_tokens[i].text}" and '
+				msg += ('not ' if text_tokens[i + 1].negate else '') + f'"{text_tokens[i + 1].text}"'
+				if self.text == 'and':
+					raise exceptions.Contradiction(msg)
+				else:
+					self.delete_me = True
+
 		# Collect all function tokens, remove ones whose ranges overlap.
 		function_tokens: list[Function] = [i for i in self.children if isinstance(i, Function)]
 
+		# Reduce Ranges
 		if len(function_tokens) > 0:
 			func_range = None
 			for i in function_tokens:

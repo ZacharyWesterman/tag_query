@@ -94,3 +94,10 @@ class ImpossibleRange(ParseError):
 
 	def __init__(self, min: int, max: int | float):
 		super().__init__(f'Tag count of [min={min} to max={max}] is impossible.')
+
+
+class Contradiction(ParseError):
+	"""Raised when a query contains contradictory conditions."""
+
+	def __init__(self, message: str):
+		super().__init__(f'Contradictory conditions: {message}')
