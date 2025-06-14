@@ -47,3 +47,23 @@ expressions are evaluated from left to right, unless otherwise demarcated by par
 - PARENTHESES:
   - `(`, `)`: Controls order of operations. `a + (b - c)` is different from `(a + b) - c` (the latter is the same as `a + b - c`. remember: left to right).
 
+---
+# Examples
+
+Here are some example tag queries and their corresponding outputs. The outputs can be directly passed to MongoDB as selection criteria.
+| Query Expression                | MongoDB Query Output                                                                                     |
+|---------------------------------|----------------------------------------------------------------------------------------------------------|
+| `tag1 and tag2`                 | `{'$and': [{'field_name': 'tag1'}, {'field_name': 'tag2'}]}`                                             |
+| `tag1 or tag2`                  | `{'$or': [{'field_name': 'tag1'}, {'field_name': 'tag2'}]}`                                              |
+| `not tag1`                      | `{'field_name': {'$ne': 'tag1'}}`                                                                        |
+| `tag1 and not tag2`             | `{'$and': [{'field_name': 'tag1'}, {'field_name': {'$ne': 'tag2'}}]}`                                    |
+| `"tag with spaces"`             | `{'field_name': 'tag with spaces'}`                                                                      |
+| `three tags concatenated`       | `{'field_name': 'three tags concatenated'}`                                                              |
+| `{^foo.*}`                      | `{'field_name': {'$regex': '^foo.*'}}`                                                                   |
+| `*test*`                        | `{'field_name': {'$regex': 'test'}}`                                                                     |
+| `exactly 3`                     | `{'tags': {'$size': 3}}`                                                                                 |
+| `fewer 2`                       | `{'tags.1': {'$exists': False}}`                                                                         |
+| `minimum 5`                     | `{'tags.4': {'$exists': True}}`                                                                          |
+| `tag1 or (tag2 and not tag3)`   | `{'$or': [{'field_name': 'tag1'}, {'$and': [{'field_name': 'tag2'}, {'field_name': {'$ne': 'tag3'}}]}]}` |
+
+You can use any of these expressions with `compile_query(expression, field='field_name')`.
