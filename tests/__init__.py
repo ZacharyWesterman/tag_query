@@ -9,7 +9,7 @@ from traceback import format_exception
 from types import TracebackType
 from typing import Callable
 
-from compiler import compile_query, exceptions
+from src.tag_query.compiler import compile_query, exceptions
 
 __tests: dict[str, Callable[[], None]] = {}
 
