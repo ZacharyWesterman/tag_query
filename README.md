@@ -2,9 +2,10 @@
 
 This module converts a text query into a dict that can be directly used in a MongoDB query of a string array field.
 
-To get started, include this repo as a submodule in your project. Then you can use it directly.
-For example, to query a collection for any documents for which the field `field_name` contains `value1` and `value2`:
+To get started, install this package with `python3 -m pip install tag_query`.
 
+## Example Usage
+To query a collection for any documents for which the field `field_name` contains `value1` and `value2`:
 ```py
 from tag_query import compile_query, exceptions
 
