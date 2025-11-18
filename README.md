@@ -62,9 +62,9 @@ Here are some example tag queries and their corresponding outputs. The outputs c
 | `three tags concatenated`       | `{'field_name': 'three tags concatenated'}`                                                              |
 | `{^foo.*}`                      | `{'field_name': {'$regex': '^foo.*'}}`                                                                   |
 | `*test*`                        | `{'field_name': {'$regex': 'test'}}`                                                                     |
-| `exactly 3`                     | `{'tags': {'$size': 3}}`                                                                                 |
-| `fewer 2`                       | `{'tags.1': {'$exists': False}}`                                                                         |
-| `minimum 5`                     | `{'tags.4': {'$exists': True}}`                                                                          |
+| `exactly 3`                     | `{'field_name': {'$size': 3}}`                                                                                 |
+| `fewer 2`                       | `{'field_name.1': {'$exists': False}}`                                                                         |
+| `minimum 5`                     | `{'field_name.4': {'$exists': True}}`                                                                          |
 | `tag1 or (tag2 and not tag3)`   | `{'$or': [{'field_name': 'tag1'}, {'$and': [{'field_name': 'tag2'}, {'field_name': {'$ne': 'tag3'}}]}]}` |
 
 You can use any of these expressions with `compile_query(expression, field='field_name')`.
