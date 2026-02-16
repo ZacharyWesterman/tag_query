@@ -4,7 +4,7 @@ This module compiles a string expression into a MongoDB query dictionary.
 
 __all__ = ['compile_query', 'exceptions']
 
-from . import exceptions, lexer, tokens
+from . import exceptions, parser, tokens
 
 
 def parse(expression: str) -> tokens.Token:
@@ -22,46 +22,14 @@ def parse(expression: str) -> tokens.Token:
 			See exceptions.py for specific error types.
 	"""
 
-	prev_len = -1
-	tok = lexer.parse(expression.lower())
-
-	# first pass to condense any globs and strings
-	pos = 0
-	while pos < len(tok):
-		prev_len = len(tok)
-
-		if tok[pos].type in ['Glob', 'String']:
-			tok = tok[pos].operate(tok, pos)
-
-		if len(tok) == prev_len:
-			pos += 1
-
-	# then operate on all other tokens
-	while len(tok) > 1:
-		pos = 0
-		while pos < len(tok):
-			# only operate on tokens that haven't already been operated on
-			if len(tok[pos].children) == 0:
-				tok = tok[pos].operate(tok, pos)
-			if len(tok) != prev_len:
-				break
-			pos += 1
-
-		# if this round of parsing did not condense the expression,
-		# then some other syntax error happened.
-		if prev_len == len(tok):
-			raise exceptions.SyntaxError
-
-		prev_len = len(tok)
-
-	if len(tok) == 0:
+	ast = parser.parse(expression.lower())
+	if ast.type == 'NoneToken':
 		return tokens.NoneToken()
 
-	result = tok[0].reduce()
-	if result.delete_me:
+	if ast.delete_me:
 		return tokens.NoneToken()
 
-	return result
+	return ast
 
 
 def compile_query(expression: str, field: str) -> dict:
