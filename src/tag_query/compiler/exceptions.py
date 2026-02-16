@@ -50,20 +50,6 @@ class MissingParam(ParseError):
 		super().__init__(f'Missing parameter for "{func}" function.')
 
 
-class EmptyParens(ParseError):
-	"""Raised when parentheses are empty in the query expression."""
-
-	def __init__(self):
-		super().__init__('Parentheses must contain an expression.')
-
-
-class MissingLeftParen(ParseError):
-	"""Raised when a left parenthesis is expected but not found in the query expression."""
-
-	def __init__(self):
-		super().__init__('Missing left parenthesis "("')
-
-
 class MissingRightParen(ParseError):
 	"""Raised when a right parenthesis is expected but not found in the query expression."""
 

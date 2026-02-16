@@ -19,11 +19,14 @@ def plaintext(peek: Callable[[], tokens.Token], get: Callable[[], tokens.Token])
 def func(peek: Callable[[], tokens.Token], get: Callable[[], tokens.Token]) -> tokens.Token:
 	fn = get()  # Can assume this is a function
 
-	# Require an integer tag count
-	if peek().type != 'String' or not re.match(r'^[0-9]+$', peek().text):
+	param = value(peek, get)
+	if param.type == tokens.NoneToken:
 		raise exceptions.MissingParam(fn.text)
 
-	fn.children = [get()]
+	if not re.match(r'^[0-9]+$', param.text):
+		raise exceptions.BadFuncParam(f'Function "{fn.text}" expected a number, but got "{param.text}"')
+
+	fn.children = [param]
 	return fn
 
 

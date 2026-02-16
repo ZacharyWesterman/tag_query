@@ -29,7 +29,7 @@ def parse(expression: str) -> tokens.Token:
 	if ast.delete_me:
 		return tokens.NoneToken()
 
-	return ast
+	return ast.reduce()
 
 
 def compile_query(expression: str, field: str) -> dict:

@@ -364,6 +364,9 @@ class Range:
 			exceptions.BadFuncParam: If the operator is invalid or the value is not a valid integer.
 		"""
 
+		if not re.match(r'^[0-9]+$', value):
+			raise exceptions.BadFuncParam(f'Function "{operator}" expected a number, but got "{value}"')
+
 		if operator == 'eq':
 			min_tags = int(value)
 			max_tags = min_tags
@@ -380,7 +383,7 @@ class Range:
 			min_tags = int(value)
 			max_tags = float('inf')
 		else:
-			raise exceptions.BadFuncParam(f'Invalid operator "{operator}" for Range.')
+			raise exceptions.InternalError(f'Unknown function name "{operator}".')
 
 		return Range(min_tags, max_tags)
 
