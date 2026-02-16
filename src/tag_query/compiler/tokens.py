@@ -51,21 +51,6 @@ class Token:
 			')'
 		)
 
-	# pylint: disable=unused-argument
-	def operate(self, tokens: list, pos: int) -> list:
-		"""
-		Operate on the token and return the modified list of tokens.
-
-		Args:
-			tokens (list): The list of tokens to operate on.
-			pos (int): The position of this token in the list.
-
-		Returns:
-			list: The modified list of tokens.
-		"""
-		return tokens
-	# pylint: enable=unused-argument
-
 	def output(self, field: str = 'tags') -> dict:
 		"""
 		Output the token as a dictionary representation for MongoDB queries.
@@ -135,7 +120,15 @@ def debug_print(tok: Token | list[Token], indent: int = 0) -> str:
 		for i in tok:
 			output += '\n' + debug_print(i, indent)
 	else:
-		output = '  ' * indent + f'{tok.__class__.__name__} ({tok.text})'
+		output = (
+			'  ' * indent +
+			f'{tok.__class__.__name__} (' +
+			("!" if tok.negate else '') +
+			("*" if tok.glob["left"] else '') +
+			tok.text +
+			("*" if tok.glob["right"] else '') +
+			')'
+		)
 		output += debug_print(tok.children, indent + 1)
 
 	return output
@@ -160,88 +153,12 @@ class Glob(Token):
 	They don't have to wait for other exprs to reduce since globs must be adjacent to strings.
 	"""
 
-	def operate(self, tokens: list, pos: int) -> list:
-		# remove redundant globs
-		if pos < (len(tokens) - 1) and tokens[pos + 1].type == 'Glob':
-			return tokens[0:pos - 1] + tokens[pos + 1::]
-
-		# if next token is a string, glob on the left (*X)
-		if pos < (len(tokens) - 1) and tokens[pos + 1].type == 'String':
-			tokens[pos + 1].glob['left'] = True
-			return tokens[0:pos] + tokens[pos + 1::]
-
-		# if prev token is a string, glob on the right (X*)
-		elif pos > 0 and tokens[pos - 1].type == 'String':
-			tokens[pos - 1].glob['right'] = True
-			return tokens[0:pos] + tokens[pos + 1::]
-
-		raise exceptions.BadGlob
-
 
 class Operator(Token):
 	"""
 	Operators are used to combine expressions in the query.
 	They can be binary (AND/OR) or unary (NOT).
 	"""
-
-	def operate(self, tokens: list, pos: int) -> list:
-		# NOT operator is unary, unless by itself, then it's actually "and not".
-		if self.text == 'not' and (pos <= 0 or (
-			tokens[pos - 1].type == 'Operator' and
-			len(tokens[pos - 1].children) == 0
-		)):
-			if pos >= (len(tokens) - 1):
-				raise exceptions.MissingOperand(self.text)
-
-			rtype = tokens[pos + 1].type
-			rkids = len(tokens[pos + 1].children)
-
-			# don't be greedy; let functions or other NOT opers try to get their param if they can.
-			if (rtype in ['Function', 'Operator'] and rkids == 0) or rtype == 'LParen':
-				return tokens
-
-			if rtype not in ['String', 'Regex'] and rkids == 0:
-				raise exceptions.MissingOperand(self.text)
-
-			tokens[pos + 1].negate = not tokens[pos + 1].negate
-
-			return tokens[0:pos] + tokens[pos + 1::]
-
-		# AND/OR operators start here
-
-		if pos == 0 or pos >= (len(tokens) - 1):
-			raise exceptions.MissingOperand(self.text)
-
-		ltype = tokens[pos - 1].type
-		lkids = len(tokens[pos - 1].children)
-
-		rtype = tokens[pos + 1].type
-		rkids = len(tokens[pos + 1].children)
-
-		# don't be greedy; let functions try to get their param if they can.
-		if (rtype == 'Function' and rkids == 0) or ltype == 'RParen' or rtype == 'LParen':
-			return tokens
-
-		if rtype == 'Operator' and tokens[pos + 1].text == 'not' and rkids == 0:
-			return tokens
-
-		if (
-			(ltype not in ['String', 'Regex'] and lkids == 0) or
-			(rtype not in ['String', 'Regex'] and rkids == 0)
-		):
-			raise exceptions.MissingOperand(self.text)
-
-		self.children = [tokens[pos - 1], tokens[pos + 1]]
-
-		# A not B -> A and not B
-		if self.text == 'not':
-			self.text = 'and'
-			self.children[1].negate = not self.children[1].negate
-
-		# fold together children for operators of the same type.
-		self.coalesce()
-
-		return tokens[0:pos - 1] + [self] + tokens[pos + 2::]
 
 	def output(self, field: str = 'tags') -> dict:
 		if len(self.children) == 0:
@@ -366,14 +283,6 @@ class String(Token):
 	They can be concatenated with adjacent strings or globs to form a single tag.
 	"""
 
-	def operate(self, tokens: list, pos: int) -> list:
-		# Concatenate adjacent strings into a single string separated by spaces
-		if pos + 1 < len(tokens) and tokens[pos + 1].type == 'String':
-			self.text += f' {tokens[pos + 1].text}'
-			return tokens[0:pos + 1] + tokens[pos + 2::]
-
-		return tokens
-
 	def output(self, field: str = 'tags') -> dict:
 		globbing = self.glob['left'] or self.glob['right']
 
@@ -422,28 +331,6 @@ class LParen(Token):
 	Left parenthesis tokens are used to group expressions in the query.
 	They indicate the start of a sub-expression that should be evaluated together.
 	"""
-
-	def operate(self, tokens: list, pos: int) -> list:
-		if pos >= (len(tokens) - 2):
-			raise exceptions.MissingRightParen
-
-		ptype = tokens[pos + 1].type
-		pkids = len(tokens[pos + 1].children)
-
-		rtype = tokens[pos + 2].type
-
-		# inner expression hasn't been parsed yet, so exit early
-		if rtype != 'RParen':
-			return tokens
-
-		if ptype != 'String' and pkids == 0:
-			raise exceptions.EmptyParens
-
-		# fold together children for operators of the same type.
-		if ptype == 'Operator':
-			tokens[pos + 1].coalesce()
-
-		return tokens[0:pos] + [tokens[pos + 1]] + tokens[pos + 3::]
 
 
 class RParen(Token):
@@ -591,28 +478,6 @@ class Function(Token):
 	Function tokens represent functions that operate on a single parameter.
 	They are used to filter results based on the number of tags or other criteria.
 	"""
-
-	def operate(self, tokens: list, pos: int) -> list:
-		if pos >= (len(tokens) - 1):
-			raise exceptions.MissingRightParen
-
-		ptype = tokens[pos + 1].type
-		pkids = len(tokens[pos + 1].children)
-
-		# inner expression hasn't been parsed yet, so exit early
-		if ptype == 'LParen':
-			return tokens
-
-		if ptype != 'String' and pkids == 0:
-			raise exceptions.MissingParam(self.text)
-
-		# Currently, all functions require a precisely numeric param.
-		if ptype != 'String' or not INT.match(tokens[pos + 1].text):
-			raise exceptions.BadFuncParam(f'Parameter for "{self.text}" must be an integer.')
-
-		self.children = [tokens[pos + 1]]
-
-		return tokens[0:pos] + [self] + tokens[pos + 2::]
 
 	def output(self, field: str = 'tags') -> dict:
 		if len(self.children) == 0:

@@ -2,9 +2,10 @@
 This module parses a string expression into a list of tokens.
 """
 
-__all__ = ['parse']
+__all__ = ['tokenize']
 
 import re
+from typing import Generator
 
 from . import exceptions, tokens
 
@@ -32,20 +33,19 @@ def consume(pattern: re.Pattern, expr: str, group: int = 0) -> tuple[str | None,
 		return None, expr
 
 
-def parse(expr: str) -> list:
-	tok = []
-	while len(expr):
+def tokenize(expression: str) -> Generator[tokens.Token, None, None]:
+	while len(expression):
 		# ignore whitespace
-		token, expr = consume(SPAC, expr)
+		token, expression = consume(SPAC, expression)
 
 		# glob operator
-		if len(expr) and expr[0] == '*':
-			expr = expr[1::]
-			tok += [tokens.Glob('*')]
+		if len(expression) and expression[0] == '*':
+			expression = expression[1::]
+			yield tokens.Glob('*')
 			continue
 
 		# operators
-		token, expr = consume(OPER, expr)
+		token, expression = consume(OPER, expression)
 		if token is not None:
 			if token == '/':
 				token = 'or'
@@ -53,11 +53,11 @@ def parse(expr: str) -> list:
 				token = 'and'
 			if token == '-':
 				token = 'not'
-			tok += [tokens.Operator(token)]
+			yield tokens.Operator(token)
 			continue
 
 		# functions
-		token, expr = consume(FUNC, expr, group=1)
+		token, expression = consume(FUNC, expression)
 		if token is not None:
 			if token in ['equals', 'exactly', 'exact', 'equal', '=']:
 				token = 'eq'
@@ -70,29 +70,29 @@ def parse(expr: str) -> list:
 			elif token in ['greater', 'above', '>']:
 				token = 'gt'
 
-			tok += [tokens.Function(token)]
+			yield tokens.Function(token)
 			continue
 
 		# left paren
-		token, expr = consume(LPAR, expr)
+		token, expression = consume(LPAR, expression)
 		if token is not None:
-			tok += [tokens.LParen(token)]
+			yield tokens.LParen(token)
 			continue
 
 		# right paren
-		token, expr = consume(RPAR, expr)
+		token, expression = consume(RPAR, expression)
 		if token is not None:
-			tok += [tokens.RParen(token)]
+			yield tokens.RParen(token)
 			continue
 
 		# non-quoted words
-		token, expr = consume(STR1, expr)
+		token, expression = consume(STR1, expression)
 		if token is not None:
-			tok += [tokens.String(token)]
+			yield tokens.String(token)
 			continue
 
 		# quoted words
-		token, expr = consume(STR2, expr)
+		token, expression = consume(STR2, expression)
 		if token is not None:
 			escs = [
 				('\\"', '"'),
@@ -103,28 +103,26 @@ def parse(expr: str) -> list:
 			]
 			for esc in escs:
 				token = token.replace(esc[0], esc[1])
-			tok += [tokens.String(token[1:-1])]
+			yield tokens.String(token[1:-1])
 			continue
 
 		# regex
-		token, expr = consume(REGX, expr)
+		token, expression = consume(REGX, expression)
 		if token is not None:
-			tok += [tokens.Regex(token[1:-1])]
+			yield tokens.Regex(token[1:-1])
 			continue
 
 		# if there's an unterminated string, that's an error
-		token, expr = consume(UNTR, expr)
+		token, expression = consume(UNTR, expression)
 		if token is not None:
 			raise exceptions.UnterminatedString
 
 		# if there's an unterminated regex, that's an error
-		token, expr = consume(UNRG, expr)
+		token, expression = consume(UNRG, expression)
 		if token is not None:
 			raise exceptions.BadRegex(token, 'unterminated regex')
 
 		# if anything else, there's an error in the pattern
-		token, expr = consume(ANY, expr)
+		token, expression = consume(ANY, expression)
 		if token is not None:
 			raise exceptions.InvalidSymbol(token)
-
-	return tok
