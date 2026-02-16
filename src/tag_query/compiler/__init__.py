@@ -26,7 +26,6 @@ def parse(expression: str) -> tokens.Token:
 	if ast.type == 'NoneToken':
 		return tokens.NoneToken()
 
-	ast = ast.reduce()
 	if ast.delete_me:
 		return tokens.NoneToken()
 

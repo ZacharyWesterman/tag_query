@@ -254,7 +254,13 @@ class Operator(Token):
 					f2.children = [Token(str(func_range.max_tags))]
 					function_tokens = [f1, f2]
 
-		self.children = text_tokens + function_tokens
+		# Complex operands that can't be broken down into simple functions or text
+		complex_tokens = [i for i in self.children if (
+			i.type not in ['String', 'Regex'] and
+			not isinstance(i, Function)
+		)]
+
+		self.children = text_tokens + function_tokens + complex_tokens
 
 	def reduce(self) -> Token:
 		if self.text == 'not':

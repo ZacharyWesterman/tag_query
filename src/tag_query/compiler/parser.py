@@ -74,26 +74,23 @@ def value(peek: Callable[[], tokens.Token], get: Callable[[], tokens.Token]) -> 
 def binary(peek: Callable[[], tokens.Token], get: Callable[[], tokens.Token]) -> tokens.Token:
 	lhs = value(peek, get)
 
-	if peek().type != 'Operator':
-		return lhs
+	while peek().type == 'Operator':
+		if peek().text == 'not':
+			op = tokens.Operator('and')
+		else:
+			op = get()
 
-	if peek().text == 'not':
-		op = tokens.Operator('and')
-	else:
-		op = get()
+		rhs = value(peek, get)
+		if rhs.type == 'NoneToken':
+			raise exceptions.MissingOperand(op.text)
 
-	rhs = binary(peek, get)
+		same_op = lhs.type == 'Operator' and lhs.text == op.text
+		op.children = (lhs.children if same_op else [lhs]) + [rhs]
 
-	if rhs.type == 'NoneToken':
-		raise exceptions.MissingOperand(op.text)
+		lhs = op
 
-	op.children = [lhs]
-
-	same_op = rhs.type == 'Operator' and rhs.text == op.text
-	op.children += rhs.children if same_op else [rhs]
-
-	op.coalesce()
-	return op
+	lhs.coalesce()
+	return lhs
 
 
 def expr(peek: Callable[[], tokens.Token], get: Callable[[], tokens.Token]) -> tokens.Token:
