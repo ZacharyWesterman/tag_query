@@ -24,29 +24,107 @@ print(mongo_query) #will output -> {'$and': [{'field_name': 'value1'}, {'field_n
 ---
 # Syntax
 
-First, it's important to note that a tag query expression has no precedence;
-expressions are evaluated from left to right, unless otherwise demarcated by parentheses.
+All query expressions are case-insensitive; that is, the mongodb query is always output in lowercase.
+The only exception is the field name, which *is* case-sensitive.
+Also, note that query expressions are evaluated from left to right, unless otherwise denoted by parentheses.
+So `a and b or c` is the same as `(a and b) or c`, and `a or b and c` is  the same as `(a or b) and c`.
 
-- TAG: case-sensitive
-  - simple: Any non-keyword, non-function, alphanumeric text. `some_tag` and `ThisIsATag123` both count.
-  - quoted: Any string of text inside double quotes. `"tag-with-dashes and operator text"` is a *single* tag.
-  - regex: Any string inside curly braces. `{^[A-Za-z0-9]+$}` matches any purely alphanumeric tag.
-  - CAVEATS for simple and quoted tags:
-    - If placed next to each other without an operator between them, the tags will concatenate with a single space as the delimiter. E.g. `tag1 and tag2 tag3` is the same as `"tag1" and "tag2 tag3"`
-    - The Glob operator (`*`) may be used for simple pattern matching. E.g. `*test*` will match any tag that begins or ends with "test", such as "contested". `*test` or `test*` are also valid, and match tags that end and begin with "test", respectively.
-- OPERATOR: case-insensitive
-  - `and`, `+`: Require *both* values to exist. `tag1 and tag2` or `tag1 + tag2`
-  - `or`, `/`: Require *at least 1* value to exist. `tag1 or tag2` or `tag1 / tag2`
-  - `not`, `-`: Invert the selection. `not tag1` or `not (tag1 and tag2)`
-    - In a binary expression, `not` can equal `and not`. For example `tag1 not tag2` or `tag1 - tag2`
-- FUNCTION: case-insensitive
-  - `eq`,`equals`,`exact`,`exactly`, `=`: Require the document to have *exactly* that many tags. `exactly 5`
-  - `lt`,`fewer`,`below`, `<`: Require the document to have *fewer than* that many tags. `fewer 5`
-  - `gt`,`greater`,`above`, `>`: Require the document to have *more than* that many tags. `greater 5`
-  - `le`,`max`,`maximum`, `<=`: Require the document to have *at most* that many tags. `maximum 5`
-  - `ge`,`min`,`minimum`, `>=`: Require the document to have *at least* that many tags. `minimum 5`
-- PARENTHESES:
-  - `(`, `)`: Controls order of operations. `a + (b - c)` is different from `(a + b) - c` (the latter is the same as `a + b - c`. remember: left to right).
+The following is the entire syntax specification:
+```flex
+expression := binary
+
+binary :=
+  | binary (`and`|`+`) value
+  | binary (`or`|`/`) value
+  | binary (`not`|`-`) value
+  | value
+
+value :=
+  | `(` expression `)`
+  | `not` value
+  | function
+  | glob
+  | regex
+  | tag
+
+function :=
+  | (`eq`|`equal`|`equals`|`exact`|`exactly`|`=`) number
+  | (`ge`|`min`|`minimum`|`>=`) number
+  | (`le`|`max`|`maximum`|`<=`) number
+  | (`lt`|`fewer`|`below`|`<`) number
+  | (`gt`|`greater`|`above`|`>`) number
+
+glob :=
+  | tag `*`
+  | `*` tag
+  | `*` tag `*`
+
+tag := literal+
+
+regex := `\{[^\}]*\}`
+
+literal :=
+  | `[a-z0-9_\.]+`
+  | `"(\\"|[^"])*"`
+
+number := `[0-9]+`
+```
+
+## Parentheses
+
+In some cases, left-to-right parsing may not be wanted, so parentheses can be used to group expressions together in a precise order.
+For example, `a or (b and not c)` is different than `a or b and not c` (the latter is equivalent to `(a or b) and not c`).
+
+## Tags
+
+Any non-keyword, non-function, non-special-character text is a single tag.
+Additionally, any text inside double quotes (`"`) is a tag.
+If multiple tags are adjacent, they are concatenated together into a single tag, using a single space for the delimiter.
+
+So for example, `some_tag`, `ThisIsATag123` and `"another tag"` each count as a single tag (but keep in mind they're case-insensitive!),
+and `tag1 and tag2 tag3` is the same as `"tag1" and "tag2 tag3"`.
+
+### Globbing
+
+The Glob operator (`*`) may be used for simple pattern matching. E.g. `*test*` will match any tag that begins or ends with "test", such as "contested". `*test` or `test*` are also valid, and match tags that end and begin with "test", respectively.
+Note that only plain text tags can have globbing applied; no regex or any compound expressions.
+
+### Regex
+
+Any string inside curly braces is interpreted as a regex pattern. E.g. `{^[A-Za-z0-9]+$}` matches any purely alphanumeric tag.
+
+## Operators
+
+Operators select based on the contents of a field.
+
+- `and`, `+`: Require *both* operands to be true. E.g. `tag1 and tag2` or `tag1 + tag2` means that the field must contain both "tag1" and "tag2".
+- `or`, `/`: Require *either* of the operands to be true. E.g. `tag1 or tag2` or `tag1 / tag2` means that the field must contain "tag1" or "tag2" (or both!). 
+- `not`, `-`: Invert the selection. E.g. `not tag1` means that the field must **not** contain "tag1", and `not (tag1 and tag2)` means it must not contain both "tag1" and "tag2", but it may contain one of them, or neither.
+  - Note that in a binary expression, `not` can mean `and not`. For example `tag1 not tag2` or `tag1 - tag2` is the same as `tag1 and not tag2`.
+
+## Functions
+
+Instead of selecting the contents of a field, functions select based on *how many* values the field has.
+
+- `eq`,`equals`,`exact`,`exactly`, `=`: Require the field to have *exactly* that many tags. E.g. `exactly 5`.
+- `lt`,`fewer`,`below`, `<`: Require the field to have *fewer than* that many tags. E.g. `fewer 5`.
+- `gt`,`greater`,`above`, `>`: Require the field to have *more than* that many tags. E.g. `greater 5`.
+- `le`,`max`,`maximum`, `<=`: Require the field to have *at most* that many tags. E.g. `maximum 5`.
+- `ge`,`min`,`minimum`, `>=`: Require the field to have *at least* that many tags. E.g. `minimum 5`.
+
+# Optimizations
+
+In certain trivial cases, the parser will optimize queries.
+For example, `a and b and a` has a redundant value `a`, so it will be optimized into just `a and b`.
+Likewise, `a or not a and not b` would be optimized into `not b`, because `a or not a` just selects everything.
+As for functions, they may be optimized away if their range includes all numbers (e.g. `< 5 or >= 5`), and redundant
+ranges will be removed (e.g. `> 2 or = 5` is the same as just `> 2`).
+
+# Contradictions
+
+Any queries that are obviously contradictory are not allowed and will raise an error.
+For example, `a and not a` can never match any documents, so it's considered an error.
+Likewise, expressions like `> 3 and < 2` are impossible and also raise an error.
 
 ---
 # Examples
