@@ -3,9 +3,10 @@ This module defines the token classes used in the query compiler.
 """
 
 import re
-from typing import Self
+from typing import Any, Callable, Self
 
 from . import exceptions
+from .array_field import ArrayField
 
 INT = re.compile(r'^[0-9]+$')
 
@@ -51,12 +52,16 @@ class Token:
 			')'
 		)
 
-	def output(self, field: str = 'tags') -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
 		"""
 		Output the token as a dictionary representation for MongoDB queries.
 
 		Args:
 			field (str): The field to output the token for, default is 'tags'.
+			kwargs (dict[str, None | str | list[str] | Callable[[str], bool])]): A dictionary whose keys are
+				extra field names, and values are either None (all values are valid); a single valid value; a
+				list of acceptable values; or a function that parses the string into a valid value, raising
+				exceptions.ParseError if invalid.
 
 		Returns:
 			dict: The dictionary representation of the token.
@@ -140,7 +145,7 @@ class NoneToken(Token):
 	def __init__(self):
 		super().__init__('')
 
-	def output(self, field: str = 'tags') -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
 		return {}
 
 
@@ -160,7 +165,7 @@ class Operator(Token):
 	They can be binary (AND/OR) or unary (NOT).
 	"""
 
-	def output(self, field: str = 'tags') -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
 		if len(self.children) == 0:
 			raise exceptions.MissingOperand(self.text)
 
@@ -174,7 +179,7 @@ class Operator(Token):
 				child.negate = not child.negate
 
 		return {
-			f'${text}': [i.output(field) for i in self.children]
+			f'${text}': [i.output(field, **kwargs) for i in self.children]
 		}
 
 	def coalesce(self) -> None:
@@ -283,13 +288,83 @@ class Operator(Token):
 		return self
 
 
+class ExtraField(Token):
+	"""
+	The field separator operator explicitly specifies a field name for a value
+	rather than assuming the default field name.
+	"""
+
+	def __str__(self) -> str:
+		return f'{self.type}({self.text} = {self.children[0].__repr__()})'
+
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+		if self.text != field and self.text not in kwargs:
+			raise exceptions.FieldDoesNotExist(self.text)
+
+		fieldop = {
+			field: ArrayField(None),
+			**kwargs,
+		}.get(self.text)
+
+		def get_field_list(token: Token) -> set[str]:
+			result = {token.type}
+			if token.type == 'String' and (token.glob['left'] or token.glob['right']):
+				result.add('Glob')
+
+			for i in token.children:
+				result |= get_field_list(i)
+			return result
+
+		field_list = get_field_list(self.children[0])
+
+		invalid_fields = ['Function', 'Range', 'ExtraField']
+		if isinstance(fieldop, ArrayField):
+			invalid_fields = ['ExtraField']
+			fieldop = fieldop.values
+
+		if any(i in field_list for i in invalid_fields):
+			raise exceptions.InvalidFieldValue(self.text)
+
+		if fieldop is None:
+			# Any value is allowed
+			return self.children[0].output(self.text, **kwargs)
+
+		# List or Lambda fields cannot have pattern matching,
+		# since they only accept fields of specific values.
+		if any(i in field_list for i in ['Glob', 'Regex']):
+			raise exceptions.InvalidFieldValue(self.text)
+
+		if isinstance(fieldop, list):
+			values = fieldop
+
+			def validate(field: str, val: str) -> str:
+				if val not in values:
+					raise exceptions.InvalidFieldValue(field)
+				return val
+			fieldop = validate
+
+		def recursive_validate(token: Token):
+			if token.type == 'Function':
+				return
+			if token.type == 'String':
+				token.text = fieldop(self.text, token.text)
+				return
+			for i in token.children:
+				recursive_validate(i)
+
+		# Validate values and parse them into the correct format.
+		recursive_validate(self.children[0])
+
+		return self.children[0].output(self.text, **kwargs)
+
+
 class String(Token):
 	"""
 	String tokens represent a single tag or a string literal in the query.
 	They can be concatenated with adjacent strings or globs to form a single tag.
 	"""
 
-	def output(self, field: str = 'tags') -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
 		globbing = self.glob['left'] or self.glob['right']
 
 		text = re.escape(self.text) if globbing else self.text
@@ -311,7 +386,7 @@ class Regex(Token):
 	They are used to match tags that conform to a specific pattern.
 	"""
 
-	def output(self, field: str = 'tags') -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
 		try:
 			return {field: re.compile(self.text)}
 		except re.error as e:
@@ -488,7 +563,7 @@ class Function(Token):
 	They are used to filter results based on the number of tags or other criteria.
 	"""
 
-	def output(self, field: str = 'tags') -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
 		if len(self.children) == 0:
 			raise exceptions.MissingParam(self.text)
 
