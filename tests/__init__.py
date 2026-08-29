@@ -9,8 +9,8 @@ from traceback import format_exception
 from types import TracebackType
 from typing import Callable
 
-from src.tag_query.compiler import (ArrayField, compile_query, exceptions,
-                                    lexer, parser)
+from src.tag_query.compiler import (Alias, ArrayField, compile_query,
+                                    exceptions, lexer, parser)
 
 __tests: dict[str, Callable[[], None]] = {}
 

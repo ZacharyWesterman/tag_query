@@ -6,6 +6,7 @@ import re
 from typing import Any, Callable, Self
 
 from . import exceptions
+from .alias import Alias
 from .array_field import ArrayField
 
 INT = re.compile(r'^[0-9]+$')
@@ -52,7 +53,7 @@ class Token:
 			')'
 		)
 
-	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 		"""
 		Output the token as a dictionary representation for MongoDB queries.
 
@@ -145,7 +146,7 @@ class NoneToken(Token):
 	def __init__(self):
 		super().__init__('')
 
-	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 		return {}
 
 
@@ -165,7 +166,7 @@ class Operator(Token):
 	They can be binary (AND/OR) or unary (NOT).
 	"""
 
-	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 		if len(self.children) == 0:
 			raise exceptions.MissingOperand(self.text)
 
@@ -297,7 +298,7 @@ class ExtraField(Token):
 	def __str__(self) -> str:
 		return f'{self.type}({self.text} = {self.children[0].__repr__()})'
 
-	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 		if self.text != field and self.text not in kwargs:
 			raise exceptions.FieldDoesNotExist(self.text)
 
@@ -317,6 +318,11 @@ class ExtraField(Token):
 
 		field_list = get_field_list(self.children[0])
 
+		field_name = self.text
+		if isinstance(fieldop, Alias):
+			field_name = fieldop.name
+			fieldop = fieldop.values
+
 		invalid_fields = ['Function', 'Range', 'ExtraField']
 		if isinstance(fieldop, ArrayField):
 			invalid_fields = ['ExtraField']
@@ -327,7 +333,7 @@ class ExtraField(Token):
 
 		if fieldop is None:
 			# Any value is allowed
-			return self.children[0].output(self.text, **kwargs)
+			return self.children[0].output(field_name, **kwargs)
 
 		# List or Lambda fields cannot have pattern matching,
 		# since they only accept fields of specific values.
@@ -355,7 +361,7 @@ class ExtraField(Token):
 		# Validate values and parse them into the correct format.
 		recursive_validate(self.children[0])
 
-		return self.children[0].output(self.text, **kwargs)
+		return self.children[0].output(field_name, **kwargs)
 
 
 class String(Token):
@@ -364,7 +370,7 @@ class String(Token):
 	They can be concatenated with adjacent strings or globs to form a single tag.
 	"""
 
-	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 		globbing = self.glob['left'] or self.glob['right']
 
 		text = re.escape(self.text) if globbing else self.text
@@ -386,7 +392,7 @@ class Regex(Token):
 	They are used to match tags that conform to a specific pattern.
 	"""
 
-	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 		try:
 			return {field: re.compile(self.text)}
 		except re.error as e:
@@ -563,7 +569,7 @@ class Function(Token):
 	They are used to filter results based on the number of tags or other criteria.
 	"""
 
-	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+	def output(self, field: str = 'tags', **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 		if len(self.children) == 0:
 			raise exceptions.MissingParam(self.text)
 

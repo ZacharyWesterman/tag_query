@@ -169,7 +169,7 @@ You can use any of these expressions with `compile_query(expression, field='fiel
 ## Explicit Field Restrictions
 
 ```py
-from tag_query import ArrayField, compile_query, exceptions
+from tag_query import Alias, ArrayField, compile_query, exceptions
 
 # A filtering function that converts field values to integers,
 # or errors if the value contains a non-digit character.
@@ -205,5 +205,10 @@ compile_query('field_name:*value*', 'tags', field_name=to_integer) # ERROR
 ArrayField(None)
 ArrayField(['value', 'val2'])
 ArrayField(to_integer)
+
+# And if you want a field to be aliased to a different MongoDB field than
+# what the user inputs, you can use an Alias.
+compile_query('myfield:value', 'tags', myfield=Alias('field_name', ArrayField(None))) # OK
+compile_query('field_name:value', 'tags', myfield=Alias('field_name', ArrayField(None))) # ERROR
 
 ```

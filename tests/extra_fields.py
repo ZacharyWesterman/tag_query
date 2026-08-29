@@ -2,7 +2,7 @@
 
 import re
 
-from . import ArrayField, compile_query, exceptions, raises, test
+from . import Alias, ArrayField, compile_query, exceptions, raises, test
 
 
 def integer(field: str, val: str) -> int:
@@ -46,3 +46,12 @@ def extra_fields():
 
 	query = compile_query('total:123', 'tags', total=integer)
 	assert query == {'total': 123}
+
+	query = compile_query('alias:value', 'tags', alias=None)
+	assert query == {'alias': 'value'}
+
+	with raises(exceptions.FieldDoesNotExist):
+		compile_query('alias:value', 'tags', fieldname=Alias('alias', None))
+
+	query = compile_query('alias:value', 'tags', alias=Alias('fieldname', None))
+	assert query == {'fieldname': 'value'}

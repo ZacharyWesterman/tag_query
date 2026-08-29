@@ -7,6 +7,7 @@ __all__ = ['compile_query', 'exceptions']
 from typing import Any, Callable
 
 from . import exceptions, parser, tokens
+from .alias import Alias
 from .array_field import ArrayField
 
 
@@ -35,7 +36,7 @@ def parse(expression: str) -> tokens.Token:
 	return ast.reduce()
 
 
-def compile_query(expression: str, field: str, **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField) -> dict:
+def compile_query(expression: str, field: str, **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 	"""
 	Compile a string expression into a MongoDB query dictionary.
 
