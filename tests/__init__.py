@@ -9,7 +9,8 @@ from traceback import format_exception
 from types import TracebackType
 from typing import Callable
 
-from src.tag_query.compiler import compile_query, exceptions, lexer, parser
+from src.tag_query.compiler import (Alias, ArrayField, compile_query,
+                                    exceptions, lexer, parser)
 
 __tests: dict[str, Callable[[], None]] = {}
 
@@ -84,7 +85,7 @@ class RaisesContext:
 
 		# Alter the exception to be an AssertionError.
 		raise RaisesError(
-			f'Expected {valid_types}, but got `{exc_type.__name__}: {exc_value}`'
+			f'Expected {valid_types}, but got `{exc_type.__class__.__name__}: {exc_value}`'
 		) from exc_value
 
 
@@ -151,6 +152,12 @@ def run_tests(test_list: list) -> None:
 			etype, value, tb = exc_info()
 			info, _error = format_exception(etype, value, tb)[-2:]
 			failed_tests.append(info)
+			# Print red cross for failure
+			print('\033[91m✗\033[0m')
+		except exceptions.ParseError as e:
+			etype, value, tb = exc_info()
+			info = ''.join(format_exception(etype, value, tb)[2:3])
+			failed_tests.append(f'{info}  \033[93mSyntax error in query expression:\033[0m {value}')
 			# Print red cross for failure
 			print('\033[91m✗\033[0m')
 		except Exception as e:

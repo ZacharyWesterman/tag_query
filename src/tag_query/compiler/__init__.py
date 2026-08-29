@@ -4,7 +4,11 @@ This module compiles a string expression into a MongoDB query dictionary.
 
 __all__ = ['compile_query', 'exceptions']
 
+from typing import Any, Callable
+
 from . import exceptions, parser, tokens
+from .alias import Alias
+from .array_field import ArrayField
 
 
 def parse(expression: str) -> tokens.Token:
@@ -32,19 +36,23 @@ def parse(expression: str) -> tokens.Token:
 	return ast.reduce()
 
 
-def compile_query(expression: str, field: str) -> dict:
+def compile_query(expression: str, field: str, **kwargs: None | list[str] | Callable[[str, str], Any] | ArrayField | Alias) -> dict:
 	"""
 	Compile a string expression into a MongoDB query dictionary.
 
 	Args:
 		expression (str): The expression to compile.
 		field (str): The field to apply the expression to.
+		kwargs (dict[str, None | list[str] | Callable[[str], bool])]): A dictionary whose keys are
+			extra field names, and values are either None (all values are valid); a list of acceptable
+			values; or a function that parses the string into a valid value, raising
+			exceptions.InvalidFieldValue (ParseError) if invalid.
 
 	Returns:
 		dict: A dictionary representing the MongoDB query.
 
 	Raises:
-		exceptions.ParseError: If the expression cannot be compiled.
+		exceptions.ParseError: If there is any error in the expression.
 			See exceptions.py for specific error types.
 	"""
-	return parse(expression).output(field)
+	return parse(expression).output(field, **kwargs)

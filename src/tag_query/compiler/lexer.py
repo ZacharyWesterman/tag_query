@@ -11,6 +11,7 @@ from . import exceptions, tokens
 
 SPAC = re.compile(r'[ \t\n\r]*')
 OPER = re.compile(r'\band\b|\bor\b|\bnot\b|\+|/|\-')
+FIELD = re.compile(':')
 FUNC = re.compile(
 	r'(>=|>|<=|<|=)|\b(eq|lt|gt|le|ge|equals?|exact(ly)?|min(imum)?|max(imum)?|fewer|greater|below|above)\b'
 )
@@ -54,6 +55,11 @@ def tokenize(expression: str) -> Generator[tokens.Token, None, None]:
 			if token == '-':
 				token = 'not'
 			yield tokens.Operator(token)
+			continue
+
+		token, expression = consume(FIELD, expression)
+		if token is not None:
+			yield tokens.ExtraField(token)
 			continue
 
 		# functions

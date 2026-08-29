@@ -87,3 +87,17 @@ class Contradiction(ParseError):
 
 	def __init__(self, message: str):
 		super().__init__(f'Contradictory conditions: {message}')
+
+
+class FieldDoesNotExist(ParseError):
+	"""Raised when a field name is given that isn't explicitly allowed."""
+
+	def __init__(self, field: str):
+		super().__init__(f'Field "{field}" does not exist.')
+
+
+class InvalidFieldValue(ParseError):
+	"""Raised when an extra field is given an invalid value."""
+
+	def __init__(self, field: str):
+		super().__init__(f'Invalid value given for field "{field}".')

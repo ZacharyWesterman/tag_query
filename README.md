@@ -42,10 +42,14 @@ binary :=
 value :=
   | `(` expression `)`
   | `not` value
+  | extra_field
   | function
   | glob
   | regex
   | tag
+
+extra_field :=
+  | literal `:` value
 
 function :=
   | (`eq`|`equal`|`equals`|`exact`|`exactly`|`=`) number
@@ -112,6 +116,21 @@ Instead of selecting the contents of a field, functions select based on *how man
 - `le`,`max`,`maximum`, `<=`: Require the field to have *at most* that many tags. E.g. `maximum 5`.
 - `ge`,`min`,`minimum`, `>=`: Require the field to have *at least* that many tags. E.g. `minimum 5`.
 
+## Explicit Fields
+
+Depending on the use case, queries on additional fields may be enabled, in addition to the default field. If enabled, these fields must be explicitly queried with the syntax `field_name : field_value`. Here, field_value can be any expression, or have restrictions imposed on it.
+
+Briefly, these restrictions are:
+
+- Field value is any string.
+- Field value is one of a list of strings.
+- Field value must satisfy a given parsing function.
+
+In addition, you may indicate whether the field is an array or not, which essentially just allows applying functions to that field.
+
+See the Explicit Field Restrictions section below for examples.
+
+
 # Optimizations
 
 In certain trivial cases, the parser will optimize queries.
@@ -146,3 +165,50 @@ Here are some example tag queries and their corresponding outputs. The outputs c
 | `tag1 or (tag2 and not tag3)`   | `{'$or': [{'field_name': 'tag1'}, {'$and': [{'field_name': 'tag2'}, {'field_name': {'$ne': 'tag3'}}]}]}` |
 
 You can use any of these expressions with `compile_query(expression, field='field_name')`.
+
+## Explicit Field Restrictions
+
+```py
+from tag_query import Alias, ArrayField, compile_query, exceptions
+
+# A filtering function that converts field values to integers,
+# or errors if the value contains a non-digit character.
+def to_integer(field_name: str, field_value: str) -> int:
+	if not re.match(r'^\d+$', field_value):
+		raise exceptions.InvalidFieldValue(field_name)
+	return int(val)
+
+# field_name can be an array, and individual values have no restrictions.
+compile_query('field_name:value', 'tags', field_name=ArrayField(None)) # OK
+compile_query('field_name:(gt 1)', 'tags', field_name=ArrayField(None)) # OK
+compile_query('field_name:(gt 1 or value)', 'tags', field_name=ArrayField(None)) # OK
+compile_query('field_name:*value*', 'tags', field_name=ArrayField(None)) # OK
+
+# field_name is NOT an array, but value has no restriction.
+compile_query('field_name:value', 'tags', field_name=None) # OK
+compile_query('field_name:(gt 1)', 'tags', field_name=None) # ERROR
+compile_query('field_name:*value*', 'tags', field_name=None) # OK
+
+# field_name is NOT an array, and value must explicitly be from a given list.
+compile_query('field_name:value', 'tags', field_name=['value', 'val2']) # OK
+compile_query('field_name:other', 'tags', field_name=['value', 'val2']) # ERROR
+compile_query('field_name:(gt 1)', 'tags', field_name=['value', 'val2']) # ERROR
+compile_query('field_name:*value*', 'tags', field_name=['value', 'val2']) # ERROR
+
+# field_name is NOT an array, and value must satisfy a filtering function.
+compile_query('field_name:123', 'tags', field_name=to_integer) # OK
+compile_query('field_name:value', 'tags', field_name=to_integer) # ERROR
+compile_query('field_name:(gt 1)', 'tags', field_name=to_integer) # ERROR
+compile_query('field_name:*value*', 'tags', field_name=to_integer) # ERROR
+
+# You can of course mix and match restriction levels to allow arrays on any of them.
+ArrayField(None)
+ArrayField(['value', 'val2'])
+ArrayField(to_integer)
+
+# And if you want a field to be aliased to a different MongoDB field than
+# what the user inputs, you can use an Alias.
+compile_query('myfield:value', 'tags', myfield=Alias('field_name', ArrayField(None))) # OK
+compile_query('field_name:value', 'tags', myfield=Alias('field_name', ArrayField(None))) # ERROR
+
+```

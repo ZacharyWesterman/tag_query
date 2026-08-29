@@ -45,11 +45,18 @@ def value(peek: Callable[[], tokens.Token], get: Callable[[], tokens.Token]) -> 
 		return middle
 
 	if peek().type == 'String':
-		middle = plaintext(peek, get)
+		string = plaintext(peek, get)
+		if peek().type == 'ExtraField':
+			oper = get()
+			val = value(peek, get)
+			oper.text = string.text
+			oper.children = [val]
+			return oper
+
 		if peek().type == 'Glob':
 			get()
-			middle.glob['right'] = True
-		return middle
+			string.glob['right'] = True
+		return string
 
 	if peek().type == 'LParen':
 		get()
